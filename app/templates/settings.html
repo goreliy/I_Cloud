@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+
+{% block title %}Настройки - {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-3 mb-4">
+        <div class="list-group">
+            <a href="/settings" class="list-group-item list-group-item-action active">
+                <i class="bi bi-person"></i> Профиль
+            </a>
+            <a href="/settings/security" class="list-group-item list-group-item-action">
+                <i class="bi bi-shield-lock"></i> Безопасность
+            </a>
+        </div>
+    </div>
+
+    <div class="col-lg-9">
+        <h1 class="mb-4"><i class="bi bi-person-circle"></i> Настройки профиля</h1>
+
+        {% if request.query_params.get('success') %}
+        <div class="alert alert-success alert-dismissible fade show">
+            <i class="bi bi-check-circle"></i> Настройки успешно сохранены!
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        {% endif %}
+
+        {% if request.query_params.get('avatar') %}
+        <div class="alert alert-success alert-dismissible fade show">
+            <i class="bi bi-check-circle"></i> Аватар успешно загружен!
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        {% endif %}
+
+        <!-- Avatar Section -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">Аватар</h5>
+            </div>
+            <div class="card-body">
+                <div class="row align-items-center">
+                    <div class="col-auto">
+                        {% if profile.avatar_url %}
+                        <img src="{{ profile.avatar_url }}" alt="Avatar" class="rounded-circle" width="100" height="100">
+                        {% else %}
+                        <div class="bg-secondary rounded-circle d-flex align-items-center justify-content-center" 
+                             style="width: 100px; height: 100px;">
+                            <i class="bi bi-person fs-1 text-white"></i>
+                        </div>
+                        {% endif %}
+                    </div>
+                    <div class="col">
+                        <form method="POST" action="/settings/upload-avatar" enctype="multipart/form-data" id="avatarForm">
+                            <div class="mb-2">
+                                <input type="file" class="form-control" name="file" accept="image/*" required 
+                                       onchange="document.getElementById('avatarForm').submit()">
+                            </div>
+                            <small class="text-muted">JPG, PNG или GIF. Максимум 2MB.</small>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Profile Information -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Информация профиля</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <div class="mb-3">
+                        <label for="display_name" class="form-label">Отображаемое имя</label>
+                        <input type="text" class="form-control" id="display_name" name="display_name" 
+                               value="{{ profile.display_name or '' }}">
+                        <small class="form-text text-muted">Ваше имя, которое будут видеть другие пользователи</small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="email" class="form-label">Email</label>
+                        <input type="email" class="form-control" id="email" value="{{ user.email }}" disabled>
+                        <small class="form-text text-muted">Для изменения email обратитесь к администратору</small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="bio" class="form-label">О себе</label>
+                        <textarea class="form-control" id="bio" name="bio" rows="3">{{ profile.bio or '' }}</textarea>
+                        <small class="form-text text-muted">Расскажите немного о себе</small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="website" class="form-label">Веб-сайт</label>
+                        <input type="url" class="form-control" id="website" name="website" 
+                               value="{{ profile.website or '' }}" placeholder="https://example.com">
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="location" class="form-label">Местоположение</label>
+                        <input type="text" class="form-control" id="location" name="location" 
+                               value="{{ profile.location or '' }}" placeholder="Москва, Россия">
+                    </div>
+
+                    <div class="d-grid gap-2 d-md-flex">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-circle"></i> Сохранить изменения
+                        </button>
+                        <a href="/channels" class="btn btn-outline-secondary">
+                            <i class="bi bi-x-circle"></i> Отмена
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Account Info -->
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5 class="mb-0">Информация об аккаунте</h5>
+            </div>
+            <div class="card-body">
+                <dl class="row mb-0">
+                    <dt class="col-sm-3">Дата регистрации:</dt>
+                    <dd class="col-sm-9">{{ user.created_at.strftime('%d.%m.%Y %H:%M') }}</dd>
+                    
+                    <dt class="col-sm-3">Статус:</dt>
+                    <dd class="col-sm-9">
+                        {% if user.is_active %}
+                        <span class="badge bg-success">Активен</span>
+                        {% else %}
+                        <span class="badge bg-secondary">Неактивен</span>
+                        {% endif %}
+                        {% if user.is_admin %}
+                        <span class="badge bg-primary">Администратор</span>
+                        {% endif %}
+                    </dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

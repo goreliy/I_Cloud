@@ -1,0 +1,297 @@
+{% extends "base.html" %}
+
+{% block title %}Админ панель - {{ app_name }}{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1><i class="bi bi-speedometer2"></i> Админ панель</h1>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="/">Главная</a></li>
+                <li class="breadcrumb-item active">Админ</li>
+            </ol>
+        </nav>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-12">
+        <ul class="nav nav-tabs">
+            <li class="nav-item">
+                <a class="nav-link active" href="/admin">
+                    <i class="bi bi-speedometer2"></i> Dashboard
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="/admin/users">
+                    <i class="bi bi-people"></i> Пользователи
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="/admin/channels">
+                    <i class="bi bi-diagram-3"></i> Каналы
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="/admin/requests">
+                    <i class="bi bi-activity"></i> API Запросы
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="/admin/stress-test">
+                    <i class="bi bi-lightning-charge"></i> Стресс-тест
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="/admin/archive">
+                    <i class="bi bi-archive"></i> Архивация
+                </a>
+            </li>
+        </ul>
+    </div>
+</div>
+
+<!-- Stats Cards -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card text-bg-primary">
+            <div class="card-body">
+                <h5 class="card-title"><i class="bi bi-people"></i> Пользователи</h5>
+                <h2 class="mb-0" id="stat-users">--</h2>
+                <small>Активных: <span id="stat-active-users">--</span></small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-bg-success">
+            <div class="card-body">
+                <h5 class="card-title"><i class="bi bi-diagram-3"></i> Каналы</h5>
+                <h2 class="mb-0" id="stat-channels">--</h2>
+                <small>Публичных: <span id="stat-public-channels">--</span></small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-bg-info">
+            <div class="card-body">
+                <h5 class="card-title"><i class="bi bi-graph-up"></i> Записей</h5>
+                <h2 class="mb-0" id="stat-feeds">--</h2>
+                <small>За 24ч: <span id="stat-recent-feeds">--</span></small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-bg-warning">
+            <div class="card-body">
+                <h5 class="card-title"><i class="bi bi-activity"></i> Запросы</h5>
+                <h2 class="mb-0" id="stat-requests">--</h2>
+                <small>Время: <span id="stat-response-time">--</span>ms</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- System Health -->
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0"><i class="bi bi-cpu"></i> CPU</h6>
+            </div>
+            <div class="card-body">
+                <div class="progress mb-2" style="height: 25px;">
+                    <div id="cpu-bar" class="progress-bar" role="progressbar" style="width: 0%">0%</div>
+                </div>
+                <small class="text-muted">Ядер: <span id="cpu-count">--</span></small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0"><i class="bi bi-memory"></i> Память</h6>
+            </div>
+            <div class="card-body">
+                <div class="progress mb-2" style="height: 25px;">
+                    <div id="memory-bar" class="progress-bar bg-success" role="progressbar" style="width: 0%">0%</div>
+                </div>
+                <small class="text-muted">Доступно: <span id="memory-available">--</span> GB</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0"><i class="bi bi-hdd"></i> Диск</h6>
+            </div>
+            <div class="card-body">
+                <div class="progress mb-2" style="height: 25px;">
+                    <div id="disk-bar" class="progress-bar bg-info" role="progressbar" style="width: 0%">0%</div>
+                </div>
+                <small class="text-muted">Свободно: <span id="disk-free">--</span> GB</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Application Memory -->
+<div class="row g-3 mb-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0"><i class="bi bi-speedometer"></i> Память приложения</h6>
+                <small class="text-muted">Обновляется каждые 5 секунд</small>
+            </div>
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col-md-3">
+                        <div class="h4 mb-0" id="app-rss">--</div>
+                        <small class="text-muted">App RSS (MB)</small>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="h4 mb-0" id="app-children">--</div>
+                        <small class="text-muted">Children (MB)</small>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="h4 mb-0" id="app-total">--</div>
+                        <small class="text-muted">Total App (MB)</small>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="h4 mb-0" id="app-percent">--%</div>
+                        <small class="text-muted">App % of RAM</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+</div>
+
+<!-- Recent Activity -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-clock-history"></i> Последняя активность</h5>
+            </div>
+            <div class="card-body">
+                <div id="activity-list">
+                    <p class="text-muted">Загрузка...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+async function loadStats() {
+    try {
+        const response = await fetch('/api/admin/stats');
+        const stats = await response.json();
+        
+        // Update stats
+        document.getElementById('stat-users').textContent = stats.total_users;
+        document.getElementById('stat-active-users').textContent = stats.active_users;
+        document.getElementById('stat-channels').textContent = stats.total_channels;
+        document.getElementById('stat-public-channels').textContent = stats.public_channels;
+        document.getElementById('stat-feeds').textContent = stats.total_feeds;
+        document.getElementById('stat-recent-feeds').textContent = stats.recent_feeds_24h;
+        document.getElementById('stat-requests').textContent = stats.recent_requests_24h;
+        document.getElementById('stat-response-time').textContent = stats.avg_response_time;
+        
+        // Update CPU
+        const cpuPercent = stats.cpu_percent;
+        const cpuBar = document.getElementById('cpu-bar');
+        cpuBar.style.width = cpuPercent + '%';
+        cpuBar.textContent = cpuPercent.toFixed(1) + '%';
+        cpuBar.className = 'progress-bar ' + (cpuPercent > 80 ? 'bg-danger' : cpuPercent > 60 ? 'bg-warning' : '');
+        
+        // Update Memory
+        const memPercent = stats.memory_percent;
+        const memBar = document.getElementById('memory-bar');
+        memBar.style.width = memPercent + '%';
+        memBar.textContent = memPercent.toFixed(1) + '%';
+        memBar.className = 'progress-bar ' + (memPercent > 80 ? 'bg-danger' : 'bg-success');
+        
+        // Update Disk
+        const diskPercent = stats.disk_percent;
+        const diskBar = document.getElementById('disk-bar');
+        diskBar.style.width = diskPercent + '%';
+        diskBar.textContent = diskPercent.toFixed(1) + '%';
+        diskBar.className = 'progress-bar ' + (diskPercent > 90 ? 'bg-danger' : 'bg-info');
+        
+    } catch (error) {
+        console.error('Error loading stats:', error);
+    }
+}
+
+async function loadRecentActivity() {
+    try {
+        const response = await fetch('/api/admin/requests?limit=10');
+        const requests = await response.json();
+        
+        const activityList = document.getElementById('activity-list');
+        if (requests.length === 0) {
+            activityList.innerHTML = '<p class="text-muted">Нет активности</p>';
+            return;
+        }
+        
+        let html = '<div class="table-responsive"><table class="table table-sm"><thead><tr>' +
+                   '<th>Время</th><th>Метод</th><th>Endpoint</th><th>Статус</th><th>Время</th></tr></thead><tbody>';
+        
+        requests.forEach(req => {
+            const timestamp = new Date(req.timestamp).toLocaleString('ru-RU');
+            const statusClass = req.status < 300 ? 'text-success' : req.status < 400 ? 'text-warning' : 'text-danger';
+            html += `<tr>
+                <td><small>${timestamp}</small></td>
+                <td><span class="badge bg-secondary">${req.method}</span></td>
+                <td><small>${req.endpoint}</small></td>
+                <td class="${statusClass}">${req.status}</td>
+                <td><small>${req.response_time}ms</small></td>
+            </tr>`;
+        });
+        
+        html += '</tbody></table></div>';
+        activityList.innerHTML = html;
+    } catch (error) {
+        console.error('Error loading activity:', error);
+    }
+}
+
+async function loadProcessMemory() {
+    try {
+        const response = await fetch('/api/admin/process/memory');
+        const mem = await response.json();
+        if (mem && !mem.error) {
+            document.getElementById('app-rss').textContent = mem.rss_mb?.toFixed(2) ?? '--';
+            document.getElementById('app-children').textContent = mem.children_rss_mb?.toFixed(2) ?? '--';
+            document.getElementById('app-total').textContent = mem.total_app_mb?.toFixed(2) ?? '--';
+            document.getElementById('app-percent').textContent = (mem.app_percent?.toFixed(1) ?? '--') + '%';
+        }
+    } catch (e) {
+        console.error('Error loading process memory:', e);
+    }
+}
+
+// Load stats on page load
+document.addEventListener('DOMContentLoaded', () => {
+    loadStats();
+    loadRecentActivity();
+    loadProcessMemory();
+    
+    // Refresh every 10 seconds
+    setInterval(loadStats, 10000);
+    setInterval(loadRecentActivity, 10000);
+    setInterval(loadProcessMemory, 5000);
+});
+</script>
+{% endblock %}
+
+

@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+
+{% block title %}Настройки канала - {{ channel.name }} - {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-3 mb-4">
+        <div class="list-group">
+            <a href="{{ root_path }}/channels/{{ channel.id }}" class="list-group-item list-group-item-action">
+                <i class="bi bi-eye"></i> Просмотр
+            </a>
+            <a href="{{ root_path }}/channels/{{ channel.id }}/settings" class="list-group-item list-group-item-action active">
+                <i class="bi bi-gear"></i> Настройки
+            </a>
+            <a href="{{ root_path }}/channels/{{ channel.id }}/edit" class="list-group-item list-group-item-action">
+                <i class="bi bi-pencil"></i> Редактировать
+            </a>
+        </div>
+    </div>
+
+    <div class="col-lg-9">
+        <h1 class="mb-4"><i class="bi bi-gear"></i> Настройки канала</h1>
+
+        {% if request.query_params.get('success') %}
+        <div class="alert alert-success alert-dismissible fade show">
+            <i class="bi bi-check-circle"></i> Настройки успешно сохранены!
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        {% endif %}
+
+        <!-- Images Section -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">Изображения</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <!-- Channel Image -->
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label"><strong>Картинка канала</strong></label>
+                        {% if channel.image_url %}
+                        <div class="mb-2">
+                            <img src="{{ channel.image_url }}" alt="Channel" class="img-fluid rounded" style="max-height: 200px;">
+                        </div>
+                        {% endif %}
+                        <form method="POST" action="/api/channels/{{ channel.id }}/upload-image" enctype="multipart/form-data" 
+                              id="imageForm" onsubmit="return uploadImage(event, 'imageForm')">
+                            <input type="file" class="form-control" name="file" accept="image/*">
+                            <small class="text-muted">Максимум 5MB. Размер: 800x600px</small>
+                        </form>
+                    </div>
+
+                    <!-- Background Image -->
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label"><strong>Фоновое изображение</strong></label>
+                        {% if channel.background_url %}
+                        <div class="mb-2">
+                            <img src="{{ channel.background_url }}" alt="Background" class="img-fluid rounded" style="max-height: 200px;">
+                        </div>
+                        {% endif %}
+                        <form method="POST" action="/api/channels/{{ channel.id }}/upload-background" enctype="multipart/form-data" 
+                              id="bgForm" onsubmit="return uploadImage(event, 'bgForm')">
+                            <input type="file" class="form-control" name="file" accept="image/*">
+                            <small class="text-muted">Максимум 5MB. Размер: 1920x1080px</small>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Appearance Section -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">Оформление</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <div class="mb-3">
+                        <label for="color_scheme" class="form-label">Цветовая схема</label>
+                        <select class="form-select" id="color_scheme" name="color_scheme">
+                            <option value="light" {% if channel.color_scheme == 'light' %}selected{% endif %}>Светлая</option>
+                            <option value="dark" {% if channel.color_scheme == 'dark' %}selected{% endif %}>Темная</option>
+                            <option value="blue" {% if channel.color_scheme == 'blue' %}selected{% endif %}>Синяя</option>
+                            <option value="green" {% if channel.color_scheme == 'green' %}selected{% endif %}>Зеленая</option>
+                            <option value="custom" {% if channel.color_scheme == 'custom' %}selected{% endif %}>Своя</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="custom_css" class="form-label">Пользовательский CSS</label>
+                        <textarea class="form-control font-monospace" id="custom_css" name="custom_css" rows="10">{{ channel.custom_css or '' }}</textarea>
+                        <small class="text-muted">Добавьте свой CSS для кастомизации внешнего вида</small>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-circle"></i> Сохранить оформление
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Field Labels Section -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Названия полей данных</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <div class="row">
+                        {% for i in range(1, 9) %}
+                        <div class="col-md-6 mb-3">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <label for="field{{ i }}_label" class="form-label mb-0">Field {{ i }}</label>
+                                <div class="form-check form-switch">
+                                    {% set field_visible_attr = 'field' + i|string + '_visible' %}
+                                    <input class="form-check-input" type="checkbox" id="field{{ i }}_visible" 
+                                           name="field{{ i }}_visible" 
+                                           {% if channel[field_visible_attr] is not defined or channel[field_visible_attr] %}checked{% endif %}>
+                                    <label class="form-check-label" for="field{{ i }}_visible">
+                                        Отображать
+                                    </label>
+                                </div>
+                            </div>
+                            <input type="text" class="form-control" id="field{{ i }}_label" name="field{{ i }}_label" 
+                                   value="{{ channel['field' + i|string + '_label'] or '' }}" 
+                                   placeholder="Например: Температура">
+                        </div>
+                        {% endfor %}
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-circle"></i> Сохранить названия и видимость
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const ROOT_PATH = '{{ root_path }}';
+async function uploadImage(event, formId) {
+    event.preventDefault();
+    const form = document.getElementById(formId);
+    const formData = new FormData(form);
+    let action = form.action;
+    // Добавляем ROOT_PATH к action, если его там нет
+    if (ROOT_PATH && !action.includes(ROOT_PATH)) {
+        // Извлекаем путь из action
+        const url = new URL(action, window.location.origin);
+        action = ROOT_PATH + url.pathname + (url.search || '');
+    }
+
+    try {
+        const response = await fetch(action, {
+            method: 'POST',
+            body: formData
+        });
+
+        if (response.ok) {
+            window.location.reload();
+        } else {
+            alert('Ошибка загрузки изображения');
+        }
+    } catch (error) {
+        alert('Ошибка: ' + error.message);
+    }
+
+    return false;
+}
+</script>
+{% endblock %}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

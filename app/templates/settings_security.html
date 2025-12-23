@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+
+{% block title %}Безопасность - {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-3 mb-4">
+        <div class="list-group">
+            <a href="/settings" class="list-group-item list-group-item-action">
+                <i class="bi bi-person"></i> Профиль
+            </a>
+            <a href="/settings/security" class="list-group-item list-group-item-action active">
+                <i class="bi bi-shield-lock"></i> Безопасность
+            </a>
+        </div>
+    </div>
+
+    <div class="col-lg-9">
+        <h1 class="mb-4"><i class="bi bi-shield-lock"></i> Настройки безопасности</h1>
+
+        {% if request.query_params.get('success') %}
+        <div class="alert alert-success alert-dismissible fade show">
+            <i class="bi bi-check-circle"></i> Пароль успешно изменен!
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        {% endif %}
+
+        {% if error %}
+        <div class="alert alert-danger alert-dismissible fade show">
+            <i class="bi bi-exclamation-triangle"></i> {{ error }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        {% endif %}
+
+        <!-- Change Password -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Изменить пароль</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="/settings/change-password">
+                    <div class="mb-3">
+                        <label for="current_password" class="form-label">Текущий пароль *</label>
+                        <input type="password" class="form-control" id="current_password" 
+                               name="current_password" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="new_password" class="form-label">Новый пароль *</label>
+                        <input type="password" class="form-control" id="new_password" 
+                               name="new_password" required minlength="6">
+                        <small class="form-text text-muted">Минимум 6 символов</small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="confirm_password" class="form-label">Подтверждение пароля *</label>
+                        <input type="password" class="form-control" id="confirm_password" 
+                               name="confirm_password" required>
+                    </div>
+
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i>
+                        <strong>Требования к паролю:</strong>
+                        <ul class="mb-0 mt-2">
+                            <li>Минимум 6 символов</li>
+                            <li>Рекомендуется использовать буквы, цифры и символы</li>
+                            <li>Избегайте простых паролей (123456, password и т.д.)</li>
+                        </ul>
+                    </div>
+
+                    <div class="d-grid gap-2 d-md-flex">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-circle"></i> Изменить пароль
+                        </button>
+                        <a href="/settings" class="btn btn-outline-secondary">
+                            <i class="bi bi-x-circle"></i> Отмена
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Security Tips -->
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5 class="mb-0">Советы по безопасности</h5>
+            </div>
+            <div class="card-body">
+                <ul class="mb-0">
+                    <li>Используйте уникальный пароль для каждого сайта</li>
+                    <li>Не сообщайте свой пароль никому</li>
+                    <li>Регулярно меняйте пароль (раз в 3-6 месяцев)</li>
+                    <li>Используйте менеджер паролей для хранения</li>
+                    <li>Включите двухфакторную аутентификацию (в будущих версиях)</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

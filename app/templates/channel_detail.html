@@ -1,0 +1,965 @@
+{% extends "base.html" %}
+
+{% block title %}{{ channel.name }} - {{ app_name }}{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1><i class="bi bi-diagram-3"></i> {{ channel.name }}</h1>
+    <div>
+        <a href="/channels/{{ channel.id }}/automation" class="btn btn-outline-warning">
+            <i class="bi bi-lightning-charge"></i> Автоматизация
+        </a>
+        <a href="/channels/{{ channel.id }}/widgets" class="btn btn-outline-info">
+            <i class="bi bi-grid-3x3"></i> Виджеты
+        </a>
+        <a href="/channels/{{ channel.id }}/settings" class="btn btn-outline-primary">
+            <i class="bi bi-gear"></i> Настройки
+        </a>
+        <a href="/channels/{{ channel.id }}/edit" class="btn btn-outline-secondary">
+            <i class="bi bi-pencil"></i> Изменить
+        </a>
+    </div>
+</div>
+
+{% if channel.image_url %}
+<div class="card mb-4">
+    <img src="{{ channel.image_url }}" class="card-img-top" alt="{{ channel.name }}">
+</div>
+{% endif %}
+
+<div class="row mb-4">
+    <div class="col-md-8">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">О канале</h5>
+            </div>
+            <div class="card-body">
+                <p>{{ channel.description or 'Описание отсутствует' }}</p>
+                <div class="row">
+                    <div class="col-6">
+                        <small class="text-muted">ID канала:</small><br>
+                        <strong>{{ channel.id }}</strong>
+                    </div>
+                    <div class="col-6">
+                        <small class="text-muted">Часовой пояс:</small><br>
+                        <strong>{{ channel.timezone }}</strong>
+                    </div>
+                    <div class="col-6 mt-2">
+                        <small class="text-muted">Создан:</small><br>
+                        <strong>{{ channel.created_at.strftime('%d.%m.%Y %H:%M') }}</strong>
+                    </div>
+                    <div class="col-6 mt-2">
+                        <small class="text-muted">Записей:</small><br>
+                        <strong>{{ channel.last_entry_id }}</strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts -->
+        {% for i in range(1, 9) %}
+        {% set field_visible_attr = 'field' + i|string + '_visible' %}
+        {% if channel[field_visible_attr] is not defined or channel[field_visible_attr] %}
+        <div class="card mb-4" id="chart-container-{{ i }}">
+            <div class="card-header">
+                <div class="row align-items-center mb-2">
+                    <div class="col">
+                        <h6 class="mb-0">
+                            {% set field_label_attr = 'field' + i|string + '_label' %}
+                            {{ channel[field_label_attr] if channel[field_label_attr] else 'Поле ' + i|string }}
+                        </h6>
+                    </div>
+                    <div class="col-auto">
+                        <!-- Выбор периода -->
+                        <div class="btn-group btn-group-sm" role="group" id="period-{{ i }}">
+                            <button type="button" class="btn btn-outline-primary" onclick="loadChartPeriod({{ i }}, '1h')">1ч</button>
+                            <button type="button" class="btn btn-outline-primary" onclick="loadChartPeriod({{ i }}, '6h')">6ч</button>
+                            <button type="button" class="btn btn-outline-primary active" onclick="loadChartPeriod({{ i }}, '24h')">1д</button>
+                            <button type="button" class="btn btn-outline-primary" onclick="loadChartPeriod({{ i }}, '7d')">7д</button>
+                            <button type="button" class="btn btn-outline-primary" onclick="loadChartPeriod({{ i }}, 'all')">Все</button>
+                            <button type="button" class="btn btn-outline-info" onclick="showCustomPeriodModal({{ i }})" title="Выбрать период">
+                                <i class="bi bi-calendar-range"></i> Период
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="row align-items-center">
+                    <div class="col">
+                        <!-- Авто-обновление -->
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="autoScroll{{ i }}" onchange="toggleAutoScroll({{ i }})">
+                            <label class="form-check-label small" for="autoScroll{{ i }}">
+                                <i class="bi bi-arrow-repeat"></i> Авто-обновление (10 сек)
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-auto">
+                        <!-- Кнопки управления -->
+                        <button class="btn btn-sm btn-outline-secondary" onclick="showYAxisSettings({{ i }})" title="Настройки оси Y">
+                            <i class="bi bi-sliders"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="resetChartZoom({{ i }})" title="Сброс масштаба">
+                            <i class="bi bi-arrow-counterclockwise"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="downloadChart({{ i }})" title="Скачать PNG">
+                            <i class="bi bi-download"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body">
+                <div style="height: 300px;">
+                    <canvas id="chart-field{{ i }}"></canvas>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        {% endfor %}
+        
+        <!-- SVG Widgets Section -->
+        {% if widgets %}
+        <h4 class="mt-4 mb-3"><i class="bi bi-grid-3x3"></i> Пользовательские виджеты</h4>
+        
+        <div class="row">
+            {% for widget in widgets %}
+            <div class="col-md-{{ widget.width }} mb-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0">{{ widget.name }}</h6>
+                    </div>
+                    <div class="card-body text-center">
+                        {% if widget.widget_type == 'svg' and widget.svg_file_url %}
+                        <object id="svg-widget-{{ widget.id }}" 
+                                data="{{ widget.svg_file_url }}" 
+                                type="image/svg+xml" 
+                                style="max-width: 100%; height: {{ widget.height }}px;">
+                        </object>
+                        {% elif widget.widget_type == 'html' %}
+                        <!-- Custom HTML widget -->
+                        <div id="html-widget-{{ widget.id }}"
+                             data-channel-id="{{ channel.id }}"
+                             data-widget-id="{{ widget.id }}">
+                            {{ widget.html_code | safe }}
+                        </div>
+                        {% if widget.css_code %}
+                        <style>{{ widget.css_code | safe }}</style>
+                        {% endif %}
+                        {% if widget.js_code %}
+                        <script>
+(function() {
+  const widgetElement = document.getElementById('html-widget-{{ widget.id }}');
+  const CHANNEL_ID = {{ channel.id }};
+  const WIDGET_ID = {{ widget.id }};
+  
+  {{ widget.js_code | safe }}
+})();
+                        </script>
+                        {% endif %}
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="col-md-4">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">API Ключи</h5>
+            </div>
+            <div class="card-body">
+                {% if api_keys %}
+                    {% for key in api_keys %}
+                    <div class="mb-3">
+                        <label class="form-label">
+                            <strong>
+                                {% if key.type == 'write' %}
+                                <i class="bi bi-pencil"></i> Ключ для записи
+                                {% else %}
+                                <i class="bi bi-eye"></i> Ключ для чтения
+                                {% endif %}
+                            </strong>
+                        </label>
+                        <div class="input-group">
+                            <input type="text" class="form-control form-control-sm" value="{{ key.key }}" readonly>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="copyToClipboard('{{ key.key }}')">
+                                <i class="bi bi-clipboard"></i>
+                            </button>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <p class="text-muted">API ключи не найдены</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">Экспорт данных</h5>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <a href="/channels/{{ channel.id }}/feeds.json" class="btn btn-outline-primary btn-sm" target="_blank">
+                        <i class="bi bi-filetype-json"></i> JSON
+                    </a>
+                    <a href="/channels/{{ channel.id }}/feeds.xml" class="btn btn-outline-success btn-sm" target="_blank">
+                        <i class="bi bi-filetype-xml"></i> XML
+                    </a>
+                    <a href="/channels/{{ channel.id }}/feeds.csv" class="btn btn-outline-info btn-sm" target="_blank">
+                        <i class="bi bi-filetype-csv"></i> CSV
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Примеры API запросов</h5>
+            </div>
+            <div class="card-body">
+                {% if write_key %}
+                <h6 class="mt-0">📝 Запись данных</h6>
+                <small><strong>GET запрос:</strong></small>
+                <pre class="bg-light p-2 small"><code>curl "{{ base_url }}/update?api_key={{ write_key }}&field1=25.5&field2=60.2"</code></pre>
+                
+                <small><strong>POST запрос:</strong></small>
+                <pre class="bg-light p-2 small"><code>curl -X POST "{{ base_url }}/update" \
+  -H "Content-Type: application/json" \
+  -d '{"api_key":"{{ write_key }}","field1":25.5,"field2":60.2}'</code></pre>
+                {% else %}
+                <div class="alert alert-warning small mb-2">
+                    <small>API ключ на запись не найден. Создайте ключ в настройках канала.</small>
+                </div>
+                {% endif %}
+                
+                {% if read_key %}
+                <h6 class="mt-3">📖 Чтение данных</h6>
+                <small><strong>Последнее значение:</strong></small>
+                <pre class="bg-light p-2 small"><code>curl "{{ base_url }}/channels/{{ channel.id }}/feeds/last.json?api_key={{ read_key }}"</code></pre>
+                
+                <small><strong>Все данные (JSON):</strong></small>
+                <pre class="bg-light p-2 small"><code>curl "{{ base_url }}/channels/{{ channel.id }}/feeds.json?api_key={{ read_key }}"</code></pre>
+                
+                <small><strong>Все данные (CSV):</strong></small>
+                <pre class="bg-light p-2 small"><code>curl "{{ base_url }}/channels/{{ channel.id }}/feeds.csv?api_key={{ read_key }}"</code></pre>
+                {% else %}
+                <div class="alert alert-warning small mb-2 mt-3">
+                    <small>API ключ на чтение не найден. Создайте ключ в настройках канала.</small>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно для выбора произвольного периода -->
+<div class="modal fade" id="customPeriodModal" tabindex="-1" aria-labelledby="customPeriodModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="customPeriodModalLabel">
+                    <i class="bi bi-calendar-range"></i> Выбор периода
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+            </div>
+            <div class="modal-body">
+                <form id="customPeriodForm">
+                    <input type="hidden" id="customPeriodFieldNum" value="">
+                    <div class="mb-3">
+                        <label for="periodStart" class="form-label">Начало периода:</label>
+                        <input type="datetime-local" class="form-control" id="periodStart" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="periodEnd" class="form-label">Конец периода:</label>
+                        <input type="datetime-local" class="form-control" id="periodEnd" required>
+                    </div>
+                    <div class="alert alert-info small mb-0">
+                        <i class="bi bi-info-circle"></i> Выберите дату и время начала и конца периода для просмотра данных.
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="applyCustomPeriod()">
+                    <i class="bi bi-check-circle"></i> Применить
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно для настройки оси Y (min/max) -->
+<div class="modal fade" id="yAxisSettingsModal" tabindex="-1" aria-labelledby="yAxisSettingsModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="yAxisSettingsModalLabel">
+                    <i class="bi bi-sliders"></i> Настройки оси Y
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+            </div>
+            <div class="modal-body">
+                <form id="yAxisSettingsForm">
+                    <input type="hidden" id="yAxisFieldNum" value="">
+                    <div class="mb-3">
+                        <label for="yAxisMin" class="form-label">Минимум (оставьте пустым для автоматического):</label>
+                        <input type="number" class="form-control" id="yAxisMin" step="any" placeholder="Автоматически">
+                    </div>
+                    <div class="mb-3">
+                        <label for="yAxisMax" class="form-label">Максимум (оставьте пустым для автоматического):</label>
+                        <input type="number" class="form-control" id="yAxisMax" step="any" placeholder="Автоматически">
+                    </div>
+                    <div class="alert alert-info small mb-0">
+                        <i class="bi bi-info-circle"></i> Оставьте поля пустыми для автоматического подбора диапазона на основе данных.
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="resetYAxisSettings()">Сбросить</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="applyYAxisSettings()">
+                    <i class="bi bi-check-circle"></i> Применить
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// Хранилище графиков и интервалов
+const charts = {};
+const autoScrollIntervals = {};
+const channelId = {{ channel.id }};
+
+// Функции для работы с настройками Y-оси (min/max)
+function getYAxisSettings(fieldNum) {
+    const key = `yAxis_${channelId}_${fieldNum}`;
+    const saved = localStorage.getItem(key);
+    if (saved) {
+        try {
+            return JSON.parse(saved);
+        } catch (e) {
+            return { min: null, max: null };
+        }
+    }
+    return { min: null, max: null };
+}
+
+function saveYAxisSettings(fieldNum, min, max) {
+    const key = `yAxis_${channelId}_${fieldNum}`;
+    const settings = {
+        min: min !== null && min !== '' ? parseFloat(min) : null,
+        max: max !== null && max !== '' ? parseFloat(max) : null
+    };
+    localStorage.setItem(key, JSON.stringify(settings));
+    return settings;
+}
+
+function getYAxisScaleOptions(fieldNum) {
+    const settings = getYAxisSettings(fieldNum);
+    const options = {};
+    if (settings.min !== null) {
+        options.min = settings.min;
+    }
+    if (settings.max !== null) {
+        options.max = settings.max;
+    }
+    return options;
+}
+
+function applyYAxisToChart(fieldNum) {
+    const chart = charts[fieldNum];
+    if (!chart) return;
+    
+    const settings = getYAxisSettings(fieldNum);
+    if (settings.min !== null) {
+        chart.options.scales.y.min = settings.min;
+    } else {
+        chart.options.scales.y.min = undefined;
+    }
+    if (settings.max !== null) {
+        chart.options.scales.y.max = settings.max;
+    } else {
+        chart.options.scales.y.max = undefined;
+    }
+    chart.update();
+}
+
+function copyToClipboard(text) {
+    navigator.clipboard.writeText(text).then(() => {
+        alert('Скопировано в буфер обмена!');
+    });
+}
+
+// Load and display charts
+async function loadCharts() {
+    try {
+        const response = await fetch('/channels/{{ channel.id }}/feeds.json?results=100');
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        // Проверка наличия данных
+        if (!data || !data.feeds || !Array.isArray(data.feeds)) {
+            console.error('Invalid data format:', data);
+            document.querySelectorAll('[id^="chart-container-"]').forEach(el => {
+                el.innerHTML = '<div class="card-body"><p class="text-muted">Ошибка загрузки данных</p></div>';
+            });
+            return;
+        }
+        
+        const feeds = data.feeds;
+        
+        if (!feeds || feeds.length === 0) {
+            document.querySelectorAll('[id^="chart-container-"]').forEach(el => {
+                el.innerHTML = '<div class="card-body"><p class="text-muted">Нет данных для отображения</p></div>';
+            });
+            return;
+        }
+        
+        // Create charts for each field
+        for (let i = 1; i <= 8; i++) {
+            const fieldName = `field${i}`;
+            const fieldData = feeds.filter(f => f[fieldName] !== null).reverse();
+            
+            if (fieldData.length === 0) {
+                document.getElementById(`chart-container-${i}`).style.display = 'none';
+                continue;
+            }
+            
+            createChart(i, fieldData);
+        }
+    } catch (error) {
+        console.error('Error loading charts:', error);
+    }
+}
+
+// Create chart with zoom/pan capabilities
+function createChart(fieldNum, fieldData) {
+    const fieldName = `field${fieldNum}`;
+    const labels = fieldData.map(f => new Date(f.created_at).toLocaleString('ru-RU'));
+    const values = fieldData.map(f => f[fieldName]);
+    
+    const ctx = document.getElementById(`chart-field${fieldNum}`);
+    charts[fieldNum] = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: `Поле ${fieldNum}`,
+                data: values,
+                borderColor: `hsl(${fieldNum * 45}, 70%, 50%)`,
+                backgroundColor: `hsla(${fieldNum * 45}, 70%, 50%, 0.1)`,
+                tension: 0.4,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                mode: 'index',
+                intersect: false
+            },
+            plugins: {
+                legend: {
+                    display: false
+                },
+                zoom: {
+                    zoom: {
+                        wheel: {
+                            enabled: true
+                        },
+                        pinch: {
+                            enabled: true
+                        },
+                        mode: 'x'
+                    },
+                    pan: {
+                        enabled: true,
+                        mode: 'x'
+                    },
+                    limits: {
+                        x: {min: 'original', max: 'original'}
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    display: true,
+                    ticks: {
+                        maxTicksLimit: 10
+                    }
+                },
+                y: {
+                    display: true,
+                    ...getYAxisScaleOptions(fieldNum)
+                }
+            }
+        }
+    });
+}
+
+// Загрузка данных за период
+async function loadChartPeriod(fieldNum, period, startDate = null, endDate = null) {
+    const now = new Date();
+    const params = new URLSearchParams();
+    
+    // Функция для форматирования даты в ISO формат для FastAPI
+    // FastAPI ожидает ISO 8601 формат, можно с миллисекундами или без
+    const formatDate = (date) => {
+        // Используем toISOString() и убираем миллисекунды для совместимости
+        // Формат: YYYY-MM-DDTHH:mm:ssZ
+        return date.toISOString().split('.')[0] + 'Z';
+    };
+    
+    if (startDate && endDate) {
+        // Произвольный период
+        params.append('start', formatDate(startDate));
+        params.append('end', formatDate(endDate));
+        params.append('results', '8000'); // Максимальное значение согласно API
+    } else if (period !== 'all') {
+        const hours = {
+            '1h': 1, '6h': 6, '24h': 24, '7d': 168
+        };
+        const start = new Date(now - hours[period] * 3600000);
+        params.append('start', formatDate(start));
+        params.append('results', '8000'); // Максимальное значение согласно API
+    } else {
+        params.append('results', '1000');
+    }
+    
+    try {
+        const url = `/channels/${channelId}/feeds.json?${params.toString()}`;
+        console.log('Fetching URL:', url); // Для отладки
+        
+        const response = await fetch(url);
+        
+        if (!response.ok) {
+            // Попробуем получить детали ошибки
+            let errorMessage = `HTTP error! status: ${response.status}`;
+            try {
+                const errorData = await response.json();
+                if (errorData.detail) {
+                    // detail может быть строкой, объектом или массивом
+                    if (typeof errorData.detail === 'string') {
+                        errorMessage += ` - ${errorData.detail}`;
+                    } else if (Array.isArray(errorData.detail)) {
+                        // Если это массив ошибок валидации
+                        const details = errorData.detail.map(err => {
+                            if (typeof err === 'string') return err;
+                            if (err.msg) return err.msg;
+                            if (err.loc && err.msg) return `${err.loc.join('.')}: ${err.msg}`;
+                            return JSON.stringify(err);
+                        }).join(', ');
+                        errorMessage += ` - ${details}`;
+                    } else {
+                        errorMessage += ` - ${JSON.stringify(errorData.detail)}`;
+                    }
+                }
+            } catch (e) {
+                // Игнорируем ошибку парсинга JSON
+                console.error('Error parsing error response:', e);
+            }
+            throw new Error(errorMessage);
+        }
+        
+        const data = await response.json();
+        
+        // Проверка наличия данных
+        if (!data || !data.feeds || !Array.isArray(data.feeds)) {
+            console.error('Invalid data format:', data);
+            alert('Ошибка: неверный формат данных от сервера');
+            return;
+        }
+        
+        const fieldName = `field${fieldNum}`;
+        const fieldData = data.feeds.filter(f => f[fieldName] !== null).reverse();
+        
+        if (fieldData.length === 0) {
+            alert('Нет данных за выбранный период');
+            return;
+        }
+        
+        // Проверка наличия графика
+        if (!charts[fieldNum]) {
+            console.error(`Chart for field ${fieldNum} not found`);
+            return;
+        }
+        
+        // Обновить данные графика
+        const chart = charts[fieldNum];
+        chart.data.labels = fieldData.map(f => new Date(f.created_at).toLocaleString('ru-RU'));
+        chart.data.datasets[0].data = fieldData.map(f => f[fieldName]);
+        
+        // Применить настройки Y-оси
+        applyYAxisToChart(fieldNum);
+        
+        chart.resetZoom();
+        chart.update();
+        
+        // Обновить активную кнопку (только если это не произвольный период)
+        if (!startDate || !endDate) {
+            document.querySelectorAll(`#period-${fieldNum} button`).forEach(btn => {
+                btn.classList.remove('active');
+            });
+            if (event && event.target && event.target.tagName === 'BUTTON') {
+                event.target.classList.add('active');
+            }
+        } else {
+            // Для произвольного периода выделить кнопку "Период"
+            document.querySelectorAll(`#period-${fieldNum} button`).forEach(btn => {
+                btn.classList.remove('active');
+                // Найти кнопку с иконкой календаря (кнопка "Период")
+                if (btn.querySelector('i.bi-calendar-range')) {
+                    btn.classList.add('active');
+                }
+            });
+        }
+        
+    } catch (error) {
+        console.error('Error loading period data:', error);
+        alert('Ошибка загрузки данных: ' + error.message);
+    }
+}
+
+// Показать модальное окно для выбора произвольного периода
+function showCustomPeriodModal(fieldNum) {
+    document.getElementById('customPeriodFieldNum').value = fieldNum;
+    
+    // Установить значения по умолчанию (последние 7 дней)
+    const end = new Date();
+    const start = new Date(end);
+    start.setDate(start.getDate() - 7);
+    
+    // Форматировать для input datetime-local (YYYY-MM-DDTHH:mm)
+    const formatDate = (date) => {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        return `${year}-${month}-${day}T${hours}:${minutes}`;
+    };
+    
+    document.getElementById('periodStart').value = formatDate(start);
+    document.getElementById('periodEnd').value = formatDate(end);
+    
+    // Показать модальное окно
+    const modal = new bootstrap.Modal(document.getElementById('customPeriodModal'));
+    modal.show();
+}
+
+// Применить выбранный произвольный период
+function applyCustomPeriod() {
+    const fieldNum = parseInt(document.getElementById('customPeriodFieldNum').value);
+    const startInput = document.getElementById('periodStart').value;
+    const endInput = document.getElementById('periodEnd').value;
+    
+    if (!startInput || !endInput) {
+        alert('Пожалуйста, выберите начало и конец периода');
+        return;
+    }
+    
+    // datetime-local input возвращает строку в формате "YYYY-MM-DDTHH:mm"
+    // JavaScript интерпретирует это как локальное время
+    const startDate = new Date(startInput);
+    const endDate = new Date(endInput);
+    
+    // Проверка валидности дат
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+        alert('Ошибка: неверный формат даты');
+        return;
+    }
+    
+    if (startDate >= endDate) {
+        alert('Дата начала должна быть раньше даты окончания');
+        return;
+    }
+    
+    console.log('Selected dates:', {
+        startInput,
+        endInput,
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString()
+    });
+    
+    // Закрыть модальное окно
+    const modal = bootstrap.Modal.getInstance(document.getElementById('customPeriodModal'));
+    modal.hide();
+    
+    // Загрузить данные за выбранный период
+    loadChartPeriod(fieldNum, 'custom', startDate, endDate);
+}
+
+// Показать модальное окно для настройки оси Y
+function showYAxisSettings(fieldNum) {
+    document.getElementById('yAxisFieldNum').value = fieldNum;
+    
+    const settings = getYAxisSettings(fieldNum);
+    document.getElementById('yAxisMin').value = settings.min !== null ? settings.min : '';
+    document.getElementById('yAxisMax').value = settings.max !== null ? settings.max : '';
+    
+    // Показать модальное окно
+    const modal = new bootstrap.Modal(document.getElementById('yAxisSettingsModal'));
+    modal.show();
+}
+
+// Применить настройки оси Y
+function applyYAxisSettings() {
+    const fieldNum = parseInt(document.getElementById('yAxisFieldNum').value);
+    const minInput = document.getElementById('yAxisMin').value;
+    const maxInput = document.getElementById('yAxisMax').value;
+    
+    // Проверка: если указаны min и max, min должен быть меньше max
+    if (minInput && maxInput) {
+        const min = parseFloat(minInput);
+        const max = parseFloat(maxInput);
+        if (isNaN(min) || isNaN(max)) {
+            alert('Ошибка: неверный формат чисел');
+            return;
+        }
+        if (min >= max) {
+            alert('Минимум должен быть меньше максимума');
+            return;
+        }
+    }
+    
+    // Сохранить настройки
+    saveYAxisSettings(fieldNum, minInput, maxInput);
+    
+    // Закрыть модальное окно
+    const modal = bootstrap.Modal.getInstance(document.getElementById('yAxisSettingsModal'));
+    modal.hide();
+    
+    // Применить настройки к графику
+    applyYAxisToChart(fieldNum);
+}
+
+// Сбросить настройки оси Y
+function resetYAxisSettings() {
+    const fieldNum = parseInt(document.getElementById('yAxisFieldNum').value);
+    
+    // Удалить настройки из localStorage
+    const key = `yAxis_${channelId}_${fieldNum}`;
+    localStorage.removeItem(key);
+    
+    // Очистить поля ввода
+    document.getElementById('yAxisMin').value = '';
+    document.getElementById('yAxisMax').value = '';
+    
+    // Применить к графику (вернуть автоматический режим)
+    applyYAxisToChart(fieldNum);
+}
+
+// Сброс масштаба
+function resetChartZoom(fieldNum) {
+    if (charts[fieldNum]) {
+        // Сохранить настройки Y-оси перед сбросом zoom
+        const settings = getYAxisSettings(fieldNum);
+        charts[fieldNum].resetZoom();
+        // Восстановить настройки Y-оси после сброса
+        applyYAxisToChart(fieldNum);
+    }
+}
+
+// Скачать график как PNG
+function downloadChart(fieldNum) {
+    const canvas = document.getElementById(`chart-field${fieldNum}`);
+    const url = canvas.toDataURL('image/png');
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `channel-${channelId}-field${fieldNum}.png`;
+    a.click();
+}
+
+// Включить/выключить авто-обновление
+function toggleAutoScroll(fieldNum) {
+    const enabled = document.getElementById(`autoScroll${fieldNum}`).checked;
+    
+    if (enabled) {
+        // Обновлять каждые 10 секунд
+        autoScrollIntervals[fieldNum] = setInterval(() => {
+            loadLatestAndAppend(fieldNum);
+        }, 10000);
+    } else {
+        clearInterval(autoScrollIntervals[fieldNum]);
+        autoScrollIntervals[fieldNum] = null;
+    }
+}
+
+// Добавить новые данные без полной перерисовки
+async function loadLatestAndAppend(fieldNum) {
+    const chart = charts[fieldNum];
+    if (!chart || chart.data.labels.length === 0) return;
+    
+    const fieldName = `field${fieldNum}`;
+    
+    try {
+        // Получить только последние данные
+        const response = await fetch(`/channels/${channelId}/feeds.json?results=10`);
+        
+        if (!response.ok) {
+            console.error('HTTP error! status:', response.status);
+            return;
+        }
+        
+        const data = await response.json();
+        
+        // Проверка наличия данных
+        if (!data || !data.feeds || !Array.isArray(data.feeds)) {
+            console.error('Invalid data format in loadLatestAndAppend:', data);
+            return;
+        }
+        
+        const newFeeds = data.feeds.filter(f => f[fieldName] !== null).reverse();
+        
+        if (newFeeds.length === 0) return;
+        
+        // Проверить есть ли новые данные
+        const lastLabel = chart.data.labels[chart.data.labels.length - 1];
+        let hasNew = false;
+        
+        newFeeds.forEach(feed => {
+            const label = new Date(feed.created_at).toLocaleString('ru-RU');
+            if (label !== lastLabel && !chart.data.labels.includes(label)) {
+                chart.data.labels.push(label);
+                chart.data.datasets[0].data.push(feed[fieldName]);
+                hasNew = true;
+            }
+        });
+        
+        if (hasNew) {
+            // Ограничить количество точек (последние 1000)
+            if (chart.data.labels.length > 1000) {
+                chart.data.labels = chart.data.labels.slice(-1000);
+                chart.data.datasets[0].data = chart.data.datasets[0].data.slice(-1000);
+            }
+            
+            // Обновить без анимации для плавности
+            chart.update('none');
+        }
+        
+    } catch (error) {
+        console.error('Error loading latest data:', error);
+    }
+}
+
+// Load charts on page load
+document.addEventListener('DOMContentLoaded', loadCharts);
+
+// Cleanup intervals on page unload
+window.addEventListener('beforeunload', () => {
+    Object.values(autoScrollIntervals).forEach(interval => {
+        if (interval) clearInterval(interval);
+    });
+});
+
+// ========== SVG WIDGETS ==========
+
+// Загрузить виджеты из backend
+const widgets = {{ widgets_json | safe }};
+
+// Функция обновления SVG виджета
+function updateSvgWidget(widgetId, latestData) {
+    const widget = widgets.find(w => w.id === widgetId);
+    if (!widget || !widget.svg_bindings) return;
+    
+    const svgObject = document.getElementById(`svg-widget-${widgetId}`);
+    if (!svgObject || !svgObject.contentDocument) return;
+    
+    try {
+        const svgDoc = svgObject.contentDocument;
+        const bindings = JSON.parse(widget.svg_bindings);
+        
+        bindings.forEach(binding => {
+            const element = svgDoc.getElementById(binding.elementId);
+            if (!element) return;
+            
+            const fieldValue = latestData[binding.field];
+            if (fieldValue === null || fieldValue === undefined) return;
+            
+            // Применить формат
+            let value = binding.format.replace('{value}', fieldValue);
+            
+            // Применить к свойству
+            switch(binding.property) {
+                case 'textContent':
+                    element.textContent = value;
+                    break;
+                case 'fill':
+                    element.setAttribute('fill', value);
+                    break;
+                case 'stroke':
+                    element.setAttribute('stroke', value);
+                    break;
+                case 'width':
+                    element.setAttribute('width', fieldValue);
+                    break;
+                case 'height':
+                    element.setAttribute('height', fieldValue);
+                    break;
+                case 'opacity':
+                    element.setAttribute('opacity', fieldValue / 100);
+                    break;
+                case 'transform':
+                    element.setAttribute('transform', value);
+                    break;
+            }
+        });
+    } catch (error) {
+        console.error('Error updating SVG widget:', error);
+    }
+}
+
+// Обновлять все SVG виджеты
+async function updateAllSvgWidgets() {
+    if (widgets.length === 0) return;
+    
+    try {
+        const response = await fetch(`/channels/${channelId}/feeds/last.json`);
+        const data = await response.json();
+        
+        widgets.forEach(widget => {
+            updateSvgWidget(widget.id, data.feed);
+        });
+    } catch (error) {
+        console.error('Error updating SVG widgets:', error);
+    }
+}
+
+// Инициализировать SVG виджеты после загрузки
+setTimeout(() => {
+    // Дождаться загрузки SVG объектов
+    const svgObjects = document.querySelectorAll('[id^="svg-widget-"]');
+    svgObjects.forEach(obj => {
+        obj.addEventListener('load', function() {
+            updateAllSvgWidgets();
+        });
+    });
+    
+    // Первичное обновление
+    updateAllSvgWidgets();
+}, 1000);
+
+// Авто-обновление SVG виджетов каждые 5 секунд
+if (widgets.length > 0) {
+    setInterval(updateAllSvgWidgets, 5000);
+}
+</script>
+{% endblock %}
+

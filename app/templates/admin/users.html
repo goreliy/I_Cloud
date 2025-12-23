@@ -1,0 +1,210 @@
+{% extends "base.html" %}
+
+{% block title %}Пользователи - Админ панель - {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1><i class="bi bi-people"></i> Управление пользователями</h1>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="/">Главная</a></li>
+                <li class="breadcrumb-item"><a href="/admin">Админ</a></li>
+                <li class="breadcrumb-item active">Пользователи</li>
+            </ol>
+        </nav>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-12">
+        <ul class="nav nav-tabs">
+            <li class="nav-item">
+                <a class="nav-link" href="/admin">
+                    <i class="bi bi-speedometer2"></i> Dashboard
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link active" href="/admin/users">
+                    <i class="bi bi-people"></i> Пользователи
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="/admin/channels">
+                    <i class="bi bi-diagram-3"></i> Каналы
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="/admin/requests">
+                    <i class="bi bi-activity"></i> API Запросы
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="/admin/stress-test">
+                    <i class="bi bi-lightning-charge"></i> Стресс-тест
+                </a>
+            </li>
+        </ul>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-3">
+                <label class="form-label">Сортировка</label>
+                <select class="form-select" id="sort-select" onchange="applyFilters()">
+                    <option value="created_at">По дате регистрации</option>
+                    <option value="email">По email</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Порядок</label>
+                <select class="form-select" id="order-select" onchange="applyFilters()">
+                    <option value="desc">Убывание</option>
+                    <option value="asc">Возрастание</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Фильтр</label>
+                <select class="form-select" id="filter-select" onchange="applyFilters()">
+                    <option value="all">Все</option>
+                    <option value="active">Активные</option>
+                    <option value="inactive">Неактивные</option>
+                    <option value="admins">Администраторы</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Поиск</label>
+                <input type="text" class="form-control" id="search-input" placeholder="Email или имя..." onkeyup="filterTable()">
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Users Table -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Все пользователи</h5>
+        <span class="badge bg-primary" id="total-count">Загрузка...</span>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover" id="users-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Email / Имя</th>
+                        <th>Каналов</th>
+                        <th>Последний вход</th>
+                        <th>Дата регистрации</th>
+                        <th>Статус</th>
+                        <th>Действия</th>
+                    </tr>
+                </thead>
+                <tbody id="users-tbody">
+                    <tr>
+                        <td colspan="7" class="text-center">Загрузка...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+let allUsers = [];
+
+async function loadUsers() {
+    try {
+        const sort = document.getElementById('sort-select').value;
+        const order = document.getElementById('order-select').value;
+        const response = await fetch(`/api/admin/users?sort=${sort}&order=${order}&limit=1000`);
+        allUsers = await response.json();
+        
+        displayUsers(allUsers);
+    } catch (error) {
+        console.error('Error loading users:', error);
+        document.getElementById('users-tbody').innerHTML = 
+            '<tr><td colspan="6" class="text-center text-danger">Ошибка загрузки данных</td></tr>';
+    }
+}
+
+function displayUsers(users) {
+    const tbody = document.getElementById('users-tbody');
+    document.getElementById('total-count').textContent = users.length;
+    
+    if (users.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">Нет пользователей</td></tr>';
+        return;
+    }
+    
+    let html = '';
+    users.forEach(user => {
+        const date = new Date(user.created_at).toLocaleString('ru-RU');
+        const lastLogin = user.last_login ? new Date(user.last_login).toLocaleString('ru-RU') : 'Никогда';
+        const displayName = user.display_name || user.email;
+        const statusBadge = user.is_active ? 
+            '<span class="badge bg-success">Активен</span>' : 
+            '<span class="badge bg-secondary">Неактивен</span>';
+        const adminBadge = user.is_admin ? '<span class="badge bg-primary ms-1">Админ</span>' : '';
+        
+        html += `<tr>
+            <td>${user.id}</td>
+            <td>
+                <div>${displayName}</div>
+                <small class="text-muted">${user.email}</small>
+            </td>
+            <td><span class="badge bg-info">${user.channel_count}</span></td>
+            <td><small>${lastLogin}</small></td>
+            <td><small>${date}</small></td>
+            <td>${statusBadge}${adminBadge}</td>
+            <td>
+                <a href="/admin/users/${user.id}/edit" class="btn btn-sm btn-outline-primary" title="Редактировать">
+                    <i class="bi bi-pencil"></i>
+                </a>
+            </td>
+        </tr>`;
+    });
+    
+    tbody.innerHTML = html;
+}
+
+function applyFilters() {
+    const filter = document.getElementById('filter-select').value;
+    let filtered = allUsers;
+    
+    if (filter === 'active') {
+        filtered = allUsers.filter(u => u.is_active);
+    } else if (filter === 'inactive') {
+        filtered = allUsers.filter(u => !u.is_active);
+    } else if (filter === 'admins') {
+        filtered = allUsers.filter(u => u.is_admin);
+    }
+    
+    displayUsers(filtered);
+    loadUsers(); // Reload with new sorting
+}
+
+function filterTable() {
+    const search = document.getElementById('search-input').value.toLowerCase();
+    const filtered = allUsers.filter(user => 
+        user.email.toLowerCase().includes(search)
+    );
+    displayUsers(filtered);
+}
+
+function viewUser(userId) {
+    // TODO: Implement user detail modal or page
+    alert('Просмотр пользователя ID: ' + userId);
+}
+
+// Load users on page load
+document.addEventListener('DOMContentLoaded', loadUsers);
+</script>
+{% endblock %}
+
+

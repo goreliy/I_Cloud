@@ -1,0 +1,47 @@
+<svg width="200" height="200" xmlns="http://www.w3.org/2000/svg">
+    <!-- Круглый датчик давления -->
+    <circle cx="100" cy="100" r="90" fill="#f5f5f5" stroke="#333" stroke-width="3"/>
+    
+    <!-- Внутренний круг -->
+    <circle cx="100" cy="100" r="70" fill="white" stroke="#ccc" stroke-width="1"/>
+    
+    <!-- Метки шкалы (по кругу) -->
+    <g id="scale-marks">
+        <line x1="100" y1="15" x2="100" y2="25" stroke="#333" stroke-width="2"/>
+        <line x1="163" y1="37" x2="157" y2="43" stroke="#333" stroke-width="2"/>
+        <line x1="185" y1="100" x2="175" y2="100" stroke="#333" stroke-width="2"/>
+        <line x1="163" y1="163" x2="157" y2="157" stroke="#333" stroke-width="2"/>
+        <line x1="100" y1="185" x2="100" y2="175" stroke="#333" stroke-width="2"/>
+        <line x1="37" y1="163" x2="43" y2="157" stroke="#333" stroke-width="2"/>
+        <line x1="15" y1="100" x2="25" y2="100" stroke="#333" stroke-width="2"/>
+        <line x1="37" y1="37" x2="43" y2="43" stroke="#333" stroke-width="2"/>
+    </g>
+    
+    <!-- Стрелка (rotate по значению давления) -->
+    <g id="needle-group" transform="rotate(-90 100 100)">
+        <line id="pressure-needle" x1="100" y1="100" x2="100" y2="35" 
+              stroke="#d32f2f" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="100" cy="100" r="8" fill="#d32f2f"/>
+    </g>
+    
+    <!-- Текст значения -->
+    <text id="pressure-value" x="100" y="125" text-anchor="middle" 
+          font-size="20" font-weight="bold">1013</text>
+    <text x="100" y="145" text-anchor="middle" font-size="12" fill="#666">hPa</text>
+</svg>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

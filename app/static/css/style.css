@@ -1,0 +1,138 @@
+/* Custom styles for IBolid Cloud */
+
+:root {
+    --primary-color: #0d6efd;
+    --success-color: #198754;
+    --info-color: #0dcaf0;
+    --warning-color: #ffc107;
+    --danger-color: #dc3545;
+}
+
+body {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+main {
+    flex: 1;
+}
+
+.navbar-brand {
+    font-weight: 600;
+    font-size: 1.3rem;
+}
+
+.card {
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+.chart-container {
+    position: relative;
+    height: 300px;
+}
+
+pre {
+    border-radius: 0.25rem;
+    overflow-x: auto;
+}
+
+pre code {
+    font-size: 0.85rem;
+}
+
+.input-group-sm .form-control {
+    font-size: 0.875rem;
+}
+
+footer {
+    margin-top: auto;
+}
+
+.bi {
+    vertical-align: -.125em;
+}
+
+.display-4 {
+    font-weight: 300;
+}
+
+.lead {
+    font-size: 1.1rem;
+    color: #6c757d;
+}
+
+.badge {
+    font-weight: 500;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .navbar-brand {
+        font-size: 1.1rem;
+    }
+    
+    .display-4 {
+        font-size: 2.5rem;
+    }
+}
+
+/* Chart styles */
+canvas {
+    max-height: 300px;
+}
+
+/* Custom button styles */
+.btn-outline-primary:hover,
+.btn-outline-secondary:hover,
+.btn-outline-success:hover,
+.btn-outline-info:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Form styles */
+.form-label {
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+}
+
+.form-control:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+}
+
+/* Alert styles */
+.alert {
+    border-left: 4px solid;
+}
+
+.alert-info {
+    border-left-color: var(--info-color);
+}
+
+.alert-success {
+    border-left-color: var(--success-color);
+}
+
+.alert-warning {
+    border-left-color: var(--warning-color);
+}
+
+.alert-danger {
+    border-left-color: var(--danger-color);
+}
+
+/* Loading spinner */
+.spinner-border {
+    width: 1rem;
+    height: 1rem;
+    border-width: 0.15em;
+}
+

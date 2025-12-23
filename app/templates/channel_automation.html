@@ -1,0 +1,712 @@
+{% extends "base.html" %}
+
+{% block title %}Автоматизация - {{ channel.name }} - {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1><i class="bi bi-lightning-charge"></i> Автоматизация: {{ channel.name }}</h1>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{{ root_path }}/channels">Каналы</a></li>
+                <li class="breadcrumb-item"><a href="{{ root_path }}/channels/{{ channel.id }}">{{ channel.name }}</a></li>
+                <li class="breadcrumb-item active">Автоматизация</li>
+            </ol>
+        </nav>
+    </div>
+</div>
+
+{% if request.query_params.get('success') %}
+<div class="alert alert-success alert-dismissible fade show">
+    <i class="bi bi-check-circle"></i> Правило успешно создано!
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
+
+<div class="alert alert-info">
+    <i class="bi bi-info-circle"></i> <strong>Автоматизация</strong> позволяет автоматически изменять поля канала на основе условий или ПИД-регуляторов.
+    Правила выполняются каждый раз при добавлении новых данных.
+</div>
+
+<div class="mb-4">
+    <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addRuleModal">
+        <i class="bi bi-plus-circle"></i> Добавить правило
+    </button>
+    <a href="{{ root_path }}/channels/{{ channel.id }}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> Назад к каналу
+    </a>
+</div>
+
+<!-- Rules List -->
+{% if rules %}
+<div class="list-group mb-4">
+    {% for rule in rules %}
+    <div class="list-group-item">
+        <div class="d-flex justify-content-between align-items-start mb-2">
+            <h5 class="mb-1">
+                <span class="badge bg-{{ 'success' if rule.is_active else 'secondary' }}">
+                    {{ 'Активно' if rule.is_active else 'Отключено' }}
+                </span>
+                {{ rule.name }}
+            </h5>
+            <span class="badge bg-info">Приоритет: {{ rule.priority }}</span>
+        </div>
+        
+        {% if rule.rule_type == 'condition' %}
+        <p class="mb-2">
+            <strong>Условие:</strong>
+            IF <code>{{ rule.trigger_field }}</code>
+            <span class="badge bg-primary">{{ rule.condition }}</span>
+            <code>{{ rule.threshold_value }}</code>
+            THEN <code>{{ rule.target_field }}</code>
+            <span class="badge bg-warning text-dark">{{ rule.action_type }}</span>
+            <code>{{ rule.action_value }}</code>
+        </p>
+        
+        {% elif rule.rule_type == 'pid' %}
+        <p class="mb-2">
+            <strong>ПИД-регулятор:</strong><br>
+            Вход: <code>{{ rule.trigger_field }}</code> →
+            Выход: <code>{{ rule.target_field }}</code> →
+            Цель: <code>{{ rule.pid_setpoint }}</code>
+        </p>
+        <p class="small text-muted mb-2">
+            Kp={{ rule.pid_kp }}, Ki={{ rule.pid_ki }}, Kd={{ rule.pid_kd }} |
+            Выход: {{ rule.pid_output_min }}-{{ rule.pid_output_max }} |
+            Состояние: Integral={{ rule.pid_integral|round(2) }}, LastErr={{ rule.pid_last_error|round(2) }}
+        </p>
+        
+        {% elif rule.rule_type == 'math' %}
+        <p class="mb-2">
+            <strong>Математическое выражение:</strong><br>
+            <code class="font-monospace">{{ rule.expression }}</code>
+        </p>
+        {% endif %}
+        
+        <div class="mt-2">
+            <div class="btn-group btn-group-sm">
+                <button class="btn btn-outline-primary" onclick="editRule({{ rule.id }})">
+                    <i class="bi bi-pencil"></i> Редактировать
+                </button>
+                <button class="btn btn-outline-danger" onclick="deleteRule({{ rule.id }})">
+                    <i class="bi bi-trash"></i> Удалить
+                </button>
+                <button class="btn btn-outline-secondary" onclick="resetPID({{ rule.id }})" {% if rule.rule_type != 'pid' %}disabled{% endif %}>
+                    <i class="bi bi-arrow-counterclockwise"></i> Сброс ПИД
+                </button>
+            </div>
+            
+            <div class="form-check form-switch d-inline-block ms-3">
+                <input class="form-check-input" type="checkbox" id="rule-{{ rule.id }}" 
+                       {% if rule.is_active %}checked{% endif %} 
+                       onchange="toggleRule({{ rule.id }}, this.checked)">
+                <label class="form-check-label" for="rule-{{ rule.id }}">Активно</label>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="alert alert-secondary">
+    <i class="bi bi-info-circle"></i> У этого канала пока нет правил автоматизации. Создайте первое!
+</div>
+{% endif %}
+
+<!-- Add Rule Modal -->
+<div class="modal fade" id="addRuleModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Добавить правило автоматизации</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="ruleForm">
+                <div class="modal-body">
+                    <div class="row mb-3">
+                        <div class="col-md-8">
+                            <label class="form-label">Название правила *</label>
+                            <input type="text" class="form-control" name="name" required 
+                                   placeholder="Например: Включить вентилятор при перегреве">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Приоритет (0-100)</label>
+                            <input type="number" class="form-control" name="priority" value="0" min="0" max="100">
+                            <small class="text-muted">Меньше = выполняется раньше</small>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Тип правила *</label>
+                        <select class="form-select" name="rule_type" id="ruleTypeSelect" onchange="toggleRuleType()" required>
+                            <option value="condition">Условие (IF-THEN)</option>
+                            <option value="pid">ПИД-регулятор</option>
+                            <option value="math">Математическое выражение</option>
+                        </select>
+                    </div>
+                    
+                    <!-- Condition Section -->
+                    <div id="conditionSection">
+                        <div class="card bg-light">
+                            <div class="card-body">
+                                <h6 class="card-title">Настройка условия IF-THEN</h6>
+                                
+                                <div class="row g-3">
+                                    <div class="col-md-3">
+                                        <label class="form-label">IF поле</label>
+                                        <select class="form-select" name="trigger_field">
+                                            {% for i in range(1, 9) %}
+                                            <option value="field{{ i }}">Field {{ i }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label">Условие</label>
+                                        <select class="form-select" name="condition">
+                                            <option value=">">&gt;</option>
+                                            <option value="<">&lt;</option>
+                                            <option value="==">==</option>
+                                            <option value=">=">&gt;=</option>
+                                            <option value="<=">&lt;=</option>
+                                            <option value="!=">!=</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label">Значение</label>
+                                        <input type="number" step="0.01" class="form-control" name="threshold_value" placeholder="30">
+                                    </div>
+                                </div>
+                                
+                                <div class="row g-3 mt-1">
+                                    <div class="col-md-3">
+                                        <label class="form-label">THEN поле</label>
+                                        <select class="form-select" name="target_field">
+                                            {% for i in range(1, 9) %}
+                                            <option value="field{{ i }}">Field {{ i }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label">Действие</label>
+                                        <select class="form-select" name="action_type">
+                                            <option value="set_value">Установить = </option>
+                                            <option value="increment">Увеличить +</option>
+                                            <option value="decrement">Уменьшить -</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label">Значение</label>
+                                        <input type="number" step="0.01" class="form-control" name="action_value" placeholder="100">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- PID Section -->
+                    <div id="pidSection" style="display: none;">
+                        <div class="card bg-light">
+                            <div class="card-body">
+                                <h6 class="card-title">Настройка ПИД-регулятора</h6>
+                                <div class="alert alert-info small">
+                                    <strong>ПИД-регулятор</strong> автоматически поддерживает заданное значение.<br>
+                                    Пример: поддержание температуры 25°C с помощью нагревателя.
+                                </div>
+                                
+                                <div class="row g-3">
+                                    <div class="col-md-4">
+                                        <label class="form-label">Входное поле (датчик)</label>
+                                        <select class="form-select" name="trigger_field_pid">
+                                            {% for i in range(1, 9) %}
+                                            <option value="field{{ i }}">Field {{ i }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">Выходное поле (управление)</label>
+                                        <select class="form-select" name="target_field_pid">
+                                            <option value="field2" selected>Field 2</option>
+                                            {% for i in range(1, 9) %}
+                                            <option value="field{{ i }}">Field {{ i }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">Setpoint (целевое значение) *</label>
+                                        <input type="number" step="0.1" class="form-control" name="pid_setpoint" 
+                                               placeholder="25.0">
+                                    </div>
+                                </div>
+                                
+                                <div class="row g-3 mt-1">
+                                    <div class="col-md-3">
+                                        <label class="form-label">Kp (пропорц.) *</label>
+                                        <input type="number" step="0.01" class="form-control" name="pid_kp" 
+                                               value="1.0" placeholder="1.0">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label">Ki (интеграл.) *</label>
+                                        <input type="number" step="0.01" class="form-control" name="pid_ki" 
+                                               value="0.1" placeholder="0.1">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label">Kd (диффер.) *</label>
+                                        <input type="number" step="0.01" class="form-control" name="pid_kd" 
+                                               value="0.01" placeholder="0.01">
+                                    </div>
+                                </div>
+                                
+                                <div class="row g-3 mt-1">
+                                    <div class="col-md-6">
+                                        <label class="form-label">Минимум выхода</label>
+                                        <input type="number" step="0.1" class="form-control" name="pid_output_min" 
+                                               value="0" placeholder="0">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Максимум выхода</label>
+                                        <input type="number" step="0.1" class="form-control" name="pid_output_max" 
+                                               value="100" placeholder="100">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Math Section -->
+                    <div id="mathSection" style="display: none;">
+                        <div class="card bg-light">
+                            <div class="card-body">
+                                <h6 class="card-title">Математическое выражение</h6>
+                                <div class="mb-3">
+                                    <label class="form-label">Выражение *</label>
+                                    <input type="text" class="form-control font-monospace" name="expression"
+                                           placeholder="field2 = field1 * 2 + 10">
+                                    <small class="text-muted">
+                                        Доступны: +, -, *, /, ^ (степень), sqrt(), abs(), min(), max(), round(), field1-8
+                                    </small>
+                                </div>
+                                <div class="alert alert-warning small">
+                                    <strong>Примеры:</strong><br>
+                                    • <code>field3 = (field1 + field2) / 2</code> - среднее значение<br>
+                                    • <code>field4 = sqrt(field1^2 + field2^2)</code> - длина вектора<br>
+                                    • <code>field5 = field1 * 1.8 + 32</code> - C° → F°
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-primary">Создать правило</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Rule Modal -->
+<div class="modal fade" id="editRuleModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Редактировать правило автоматизации</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="editRuleForm">
+                <input type="hidden" id="editRuleId" name="rule_id">
+                <div class="modal-body">
+                    <div class="row mb-3">
+                        <div class="col-md-8">
+                            <label class="form-label">Название правила *</label>
+                            <input type="text" class="form-control" id="editName" name="name" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Приоритет (0-100)</label>
+                            <input type="number" class="form-control" id="editPriority" name="priority" value="0" min="0" max="100">
+                            <small class="text-muted">Меньше = выполняется раньше</small>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Тип правила *</label>
+                        <select class="form-select" name="rule_type" id="editRuleTypeSelect" onchange="toggleEditRuleType()" required>
+                            <option value="condition">Условие (IF-THEN)</option>
+                            <option value="pid">ПИД-регулятор</option>
+                            <option value="math">Математическое выражение</option>
+                        </select>
+                    </div>
+                    
+                    <!-- Condition Section -->
+                    <div id="editConditionSection">
+                        <div class="card bg-light">
+                            <div class="card-body">
+                                <h6 class="card-title">Настройка условия IF-THEN</h6>
+                                
+                                <div class="row g-3">
+                                    <div class="col-md-3">
+                                        <label class="form-label">IF поле</label>
+                                        <select class="form-select" id="editTriggerField" name="trigger_field">
+                                            {% for i in range(1, 9) %}
+                                            <option value="field{{ i }}">Field {{ i }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label">Условие</label>
+                                        <select class="form-select" id="editCondition" name="condition">
+                                            <option value=">">&gt;</option>
+                                            <option value="<">&lt;</option>
+                                            <option value="==">==</option>
+                                            <option value=">=">&gt;=</option>
+                                            <option value="<=">&lt;=</option>
+                                            <option value="!=">!=</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label">Значение</label>
+                                        <input type="number" step="0.01" class="form-control" id="editThresholdValue" name="threshold_value">
+                                    </div>
+                                </div>
+                                
+                                <div class="row g-3 mt-1">
+                                    <div class="col-md-3">
+                                        <label class="form-label">THEN поле</label>
+                                        <select class="form-select" id="editTargetField" name="target_field">
+                                            {% for i in range(1, 9) %}
+                                            <option value="field{{ i }}">Field {{ i }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label">Действие</label>
+                                        <select class="form-select" id="editActionType" name="action_type">
+                                            <option value="set_value">Установить = </option>
+                                            <option value="increment">Увеличить +</option>
+                                            <option value="decrement">Уменьшить -</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label">Значение</label>
+                                        <input type="number" step="0.01" class="form-control" id="editActionValue" name="action_value">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- PID Section -->
+                    <div id="editPidSection" style="display: none;">
+                        <div class="card bg-light">
+                            <div class="card-body">
+                                <h6 class="card-title">Настройка ПИД-регулятора</h6>
+                                
+                                <div class="row g-3">
+                                    <div class="col-md-4">
+                                        <label class="form-label">Входное поле (датчик)</label>
+                                        <select class="form-select" id="editTriggerFieldPid" name="trigger_field_pid">
+                                            {% for i in range(1, 9) %}
+                                            <option value="field{{ i }}">Field {{ i }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">Выходное поле (управление)</label>
+                                        <select class="form-select" id="editTargetFieldPid" name="target_field_pid">
+                                            {% for i in range(1, 9) %}
+                                            <option value="field{{ i }}">Field {{ i }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">Setpoint (целевое значение) *</label>
+                                        <input type="number" step="0.1" class="form-control" id="editPidSetpoint" name="pid_setpoint">
+                                    </div>
+                                </div>
+                                
+                                <div class="row g-3 mt-1">
+                                    <div class="col-md-3">
+                                        <label class="form-label">Kp (пропорц.) *</label>
+                                        <input type="number" step="0.01" class="form-control" id="editPidKp" name="pid_kp">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label">Ki (интеграл.) *</label>
+                                        <input type="number" step="0.01" class="form-control" id="editPidKi" name="pid_ki">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label">Kd (диффер.) *</label>
+                                        <input type="number" step="0.01" class="form-control" id="editPidKd" name="pid_kd">
+                                    </div>
+                                </div>
+                                
+                                <div class="row g-3 mt-1">
+                                    <div class="col-md-6">
+                                        <label class="form-label">Минимум выхода</label>
+                                        <input type="number" step="0.1" class="form-control" id="editPidOutputMin" name="pid_output_min">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Максимум выхода</label>
+                                        <input type="number" step="0.1" class="form-control" id="editPidOutputMax" name="pid_output_max">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Math Section -->
+                    <div id="editMathSection" style="display: none;">
+                        <div class="card bg-light">
+                            <div class="card-body">
+                                <h6 class="card-title">Математическое выражение</h6>
+                                <div class="mb-3">
+                                    <label class="form-label">Выражение *</label>
+                                    <input type="text" class="form-control font-monospace" id="editExpression" name="expression">
+                                    <small class="text-muted">
+                                        Доступны: +, -, *, /, ^ (степень), sqrt(), abs(), min(), max(), round(), field1-8
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-primary">Сохранить изменения</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const ROOT_PATH = '{{ root_path }}';
+function toggleRuleType() {
+    const ruleType = document.getElementById('ruleTypeSelect').value;
+    document.getElementById('conditionSection').style.display = ruleType === 'condition' ? 'block' : 'none';
+    document.getElementById('pidSection').style.display = ruleType === 'pid' ? 'block' : 'none';
+    document.getElementById('mathSection').style.display = ruleType === 'math' ? 'block' : 'none';
+}
+
+// Submit form
+document.getElementById('ruleForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    const ruleType = formData.get('rule_type');
+    
+    // Build JSON based on rule type
+    const data = {
+        name: formData.get('name'),
+        rule_type: ruleType,
+        priority: parseInt(formData.get('priority')) || 0
+    };
+    
+    if (ruleType === 'condition') {
+        data.trigger_field = formData.get('trigger_field');
+        data.condition = formData.get('condition');
+        data.threshold_value = parseFloat(formData.get('threshold_value'));
+        data.target_field = formData.get('target_field');
+        data.action_type = formData.get('action_type');
+        data.action_value = parseFloat(formData.get('action_value'));
+    } else if (ruleType === 'pid') {
+        data.trigger_field = formData.get('trigger_field_pid');
+        data.target_field = formData.get('target_field_pid');
+        data.pid_setpoint = parseFloat(formData.get('pid_setpoint'));
+        data.pid_kp = parseFloat(formData.get('pid_kp'));
+        data.pid_ki = parseFloat(formData.get('pid_ki'));
+        data.pid_kd = parseFloat(formData.get('pid_kd'));
+        data.pid_output_min = parseFloat(formData.get('pid_output_min')) || 0;
+        data.pid_output_max = parseFloat(formData.get('pid_output_max')) || 100;
+    } else if (ruleType === 'math') {
+        data.expression = formData.get('expression');
+    }
+    
+    try {
+        const response = await fetch(ROOT_PATH + '/api/channels/{{ channel.id }}/automation', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+        
+        if (response.ok) {
+            window.location.href = ROOT_PATH + '/channels/{{ channel.id }}/automation?success=1';
+        } else {
+            const error = await response.json();
+            alert('Ошибка: ' + (error.detail || 'Неизвестная ошибка'));
+        }
+    } catch (error) {
+        alert('Ошибка: ' + error.message);
+    }
+});
+
+async function deleteRule(ruleId) {
+    if (!confirm('Удалить это правило?')) return;
+    
+    try {
+        const response = await fetch(ROOT_PATH + `/api/channels/{{ channel.id }}/automation/${ruleId}`, {
+            method: 'DELETE'
+        });
+        
+        if (response.ok || response.status === 204) {
+            location.reload();
+        } else {
+            alert('Ошибка удаления');
+        }
+    } catch (error) {
+        alert('Ошибка: ' + error.message);
+    }
+}
+
+async function toggleRule(ruleId, isActive) {
+    try {
+        const response = await fetch(ROOT_PATH + `/api/channels/{{ channel.id }}/automation/${ruleId}`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({is_active: isActive})
+        });
+        
+        if (!response.ok) {
+            alert('Ошибка обновления');
+            location.reload();
+        }
+    } catch (error) {
+        alert('Ошибка: ' + error.message);
+    }
+}
+
+async function resetPID(ruleId) {
+    if (!confirm('Сбросить состояние ПИД-регулятора (integral и last_error)?')) return;
+    
+    try {
+        const response = await fetch(ROOT_PATH + `/api/channels/{{ channel.id }}/automation/${ruleId}`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                pid_integral: 0,
+                pid_last_error: 0
+            })
+        });
+        
+        if (response.ok) {
+            location.reload();
+        } else {
+            alert('Ошибка сброса');
+        }
+    } catch (error) {
+        alert('Ошибка: ' + error.message);
+    }
+}
+
+function toggleEditRuleType() {
+    const ruleType = document.getElementById('editRuleTypeSelect').value;
+    document.getElementById('editConditionSection').style.display = ruleType === 'condition' ? 'block' : 'none';
+    document.getElementById('editPidSection').style.display = ruleType === 'pid' ? 'block' : 'none';
+    document.getElementById('editMathSection').style.display = ruleType === 'math' ? 'block' : 'none';
+}
+
+async function editRule(ruleId) {
+    try {
+        // Загрузить данные правила
+        const response = await fetch(ROOT_PATH + `/api/channels/{{ channel.id }}/automation/${ruleId}`);
+        if (!response.ok) {
+            alert('Ошибка загрузки правила');
+            return;
+        }
+        
+        const rule = await response.json();
+        
+        // Заполнить форму
+        document.getElementById('editRuleId').value = rule.id;
+        document.getElementById('editName').value = rule.name;
+        document.getElementById('editPriority').value = rule.priority;
+        document.getElementById('editRuleTypeSelect').value = rule.rule_type;
+        
+        // Переключить секции
+        toggleEditRuleType();
+        
+        // Заполнить данные по типу правила
+        if (rule.rule_type === 'condition') {
+            document.getElementById('editTriggerField').value = rule.trigger_field || 'field1';
+            document.getElementById('editCondition').value = rule.condition || '>';
+            document.getElementById('editThresholdValue').value = rule.threshold_value || '';
+            document.getElementById('editTargetField').value = rule.target_field || 'field2';
+            document.getElementById('editActionType').value = rule.action_type || 'set_value';
+            document.getElementById('editActionValue').value = rule.action_value || '';
+        } else if (rule.rule_type === 'pid') {
+            document.getElementById('editTriggerFieldPid').value = rule.trigger_field || 'field1';
+            document.getElementById('editTargetFieldPid').value = rule.target_field || 'field2';
+            document.getElementById('editPidSetpoint').value = rule.pid_setpoint || '';
+            document.getElementById('editPidKp').value = rule.pid_kp || '';
+            document.getElementById('editPidKi').value = rule.pid_ki || '';
+            document.getElementById('editPidKd').value = rule.pid_kd || '';
+            document.getElementById('editPidOutputMin').value = rule.pid_output_min || 0;
+            document.getElementById('editPidOutputMax').value = rule.pid_output_max || 100;
+        } else if (rule.rule_type === 'math') {
+            document.getElementById('editExpression').value = rule.expression || '';
+        }
+        
+        // Показать модальное окно
+        const modal = new bootstrap.Modal(document.getElementById('editRuleModal'));
+        modal.show();
+    } catch (error) {
+        alert('Ошибка: ' + error.message);
+    }
+}
+
+// Submit edit form
+document.getElementById('editRuleForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    const ruleId = formData.get('rule_id');
+    const ruleType = formData.get('rule_type');
+    
+    // Build JSON based on rule type
+    const data = {
+        name: formData.get('name'),
+        priority: parseInt(formData.get('priority')) || 0
+    };
+    
+    if (ruleType === 'condition') {
+        data.trigger_field = formData.get('trigger_field');
+        data.condition = formData.get('condition');
+        data.threshold_value = parseFloat(formData.get('threshold_value'));
+        data.target_field = formData.get('target_field');
+        data.action_type = formData.get('action_type');
+        data.action_value = parseFloat(formData.get('action_value'));
+    } else if (ruleType === 'pid') {
+        data.trigger_field = formData.get('trigger_field_pid');
+        data.target_field = formData.get('target_field_pid');
+        data.pid_setpoint = parseFloat(formData.get('pid_setpoint'));
+        data.pid_kp = parseFloat(formData.get('pid_kp'));
+        data.pid_ki = parseFloat(formData.get('pid_ki'));
+        data.pid_kd = parseFloat(formData.get('pid_kd'));
+        data.pid_output_min = parseFloat(formData.get('pid_output_min')) || 0;
+        data.pid_output_max = parseFloat(formData.get('pid_output_max')) || 100;
+    } else if (ruleType === 'math') {
+        data.expression = formData.get('expression');
+    }
+    
+    try {
+        const response = await fetch(ROOT_PATH + `/api/channels/{{ channel.id }}/automation/${ruleId}`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+        
+        if (response.ok) {
+            window.location.href = ROOT_PATH + '/channels/{{ channel.id }}/automation?success=1';
+        } else {
+            const error = await response.json();
+            alert('Ошибка: ' + (error.detail || 'Неизвестная ошибка'));
+        }
+    } catch (error) {
+        alert('Ошибка: ' + error.message);
+    }
+});
+</script>
+{% endblock %}
+
+

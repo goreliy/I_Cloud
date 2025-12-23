@@ -1,0 +1,257 @@
+{% extends "base.html" %}
+
+{% block title %}Редактирование пользователя - Админ панель - {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1><i class="bi bi-person-gear"></i> Редактирование пользователя</h1>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="/">Главная</a></li>
+                <li class="breadcrumb-item"><a href="/admin">Админ</a></li>
+                <li class="breadcrumb-item"><a href="/admin/users">Пользователи</a></li>
+                <li class="breadcrumb-item active">Редактирование</li>
+            </ol>
+        </nav>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">Основная информация</h5>
+            </div>
+            <div class="card-body">
+                <form id="userEditForm">
+                    <input type="hidden" id="user_id" value="{{ edit_user.id }}">
+                    
+                    <div class="mb-3">
+                        <label for="email" class="form-label">Email *</label>
+                        <input type="email" class="form-control" id="email" value="{{ edit_user.email }}" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="display_name" class="form-label">Отображаемое имя</label>
+                        <input type="text" class="form-control" id="display_name" 
+                               value="{{ edit_profile.display_name if edit_profile else '' }}" 
+                               placeholder="Не указано">
+                        <small class="form-text text-muted">Если не указано, будет использоваться email</small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="is_active" 
+                                   {% if edit_user.is_active %}checked{% endif %}>
+                            <label class="form-check-label" for="is_active">
+                                Активен
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="is_admin" 
+                                   {% if edit_user.is_admin %}checked{% endif %}>
+                            <label class="form-check-label" for="is_admin">
+                                Администратор
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="alert alert-info">
+                        <strong>Информация:</strong><br>
+                        Email: {{ edit_user.email }}<br>
+                        Последний вход: {{ edit_user.last_login.strftime('%Y-%m-%d %H:%M:%S') if edit_user.last_login else 'Никогда' }}<br>
+                        Дата регистрации: {{ edit_user.created_at.strftime('%Y-%m-%d %H:%M:%S') }}
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-save"></i> Сохранить изменения
+                    </button>
+                    <a href="/admin/users" class="btn btn-secondary">
+                        <i class="bi bi-arrow-left"></i> Назад к списку
+                    </a>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">Смена пароля</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <button type="button" class="btn btn-warning w-100" onclick="showPasswordModal()">
+                        <i class="bi bi-key"></i> Задать новый пароль
+                    </button>
+                </div>
+                <div class="mb-3">
+                    <button type="button" class="btn btn-info w-100" onclick="sendResetLink()">
+                        <i class="bi bi-envelope"></i> Отправить ссылку для смены
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Опасная зона</h5>
+            </div>
+            <div class="card-body">
+                <button type="button" class="btn btn-danger w-100" onclick="deleteUser()">
+                    <i class="bi bi-trash"></i> Удалить пользователя
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Password Modal -->
+<div class="modal fade" id="passwordModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Задать новый пароль</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="new_password" class="form-label">Новый пароль *</label>
+                    <input type="password" class="form-control" id="new_password" minlength="6" required>
+                    <small class="form-text text-muted">Минимум 6 символов</small>
+                </div>
+                <div class="mb-3">
+                    <label for="confirm_password" class="form-label">Подтверждение пароля *</label>
+                    <input type="password" class="form-control" id="confirm_password" minlength="6" required>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="setPassword()">Установить пароль</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const userId = document.getElementById('user_id').value;
+
+document.getElementById('userEditForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const payload = {
+        email: document.getElementById('email').value,
+        display_name: document.getElementById('display_name').value || null,
+        is_active: document.getElementById('is_active').checked,
+        is_admin: document.getElementById('is_admin').checked,
+    };
+    
+    try {
+        const response = await fetch(`/api/admin/users/${userId}`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        
+        if (response.ok) {
+            alert('Пользователь успешно обновлен');
+            window.location.href = '/admin/users';
+        } else {
+            const error = await response.json();
+            alert('Ошибка: ' + (error.detail || 'Неизвестная ошибка'));
+        }
+    } catch (error) {
+        alert('Ошибка: ' + error.message);
+    }
+});
+
+function showPasswordModal() {
+    const modal = new bootstrap.Modal(document.getElementById('passwordModal'));
+    modal.show();
+}
+
+async function setPassword() {
+    const newPassword = document.getElementById('new_password').value;
+    const confirmPassword = document.getElementById('confirm_password').value;
+    
+    if (newPassword !== confirmPassword) {
+        alert('Пароли не совпадают');
+        return;
+    }
+    
+    if (newPassword.length < 6) {
+        alert('Пароль должен содержать минимум 6 символов');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/admin/users/${userId}/force-password-change?method=direct&new_password=${encodeURIComponent(newPassword)}`, {
+            method: 'POST'
+        });
+        
+        if (response.ok) {
+            alert('Пароль успешно изменен');
+            bootstrap.Modal.getInstance(document.getElementById('passwordModal')).hide();
+            document.getElementById('new_password').value = '';
+            document.getElementById('confirm_password').value = '';
+        } else {
+            const error = await response.json();
+            alert('Ошибка: ' + (error.detail || 'Неизвестная ошибка'));
+        }
+    } catch (error) {
+        alert('Ошибка: ' + error.message);
+    }
+}
+
+async function sendResetLink() {
+    if (!confirm('Отправить ссылку для смены пароля пользователю?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/admin/users/${userId}/send-reset-link`, {
+            method: 'POST'
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            alert('Ссылка для сброса пароля: ' + data.reset_url + '\n\n(В продакшене ссылка будет отправлена на email)');
+        } else {
+            const error = await response.json();
+            alert('Ошибка: ' + (error.detail || 'Неизвестная ошибка'));
+        }
+    } catch (error) {
+        alert('Ошибка: ' + error.message);
+    }
+}
+
+async function deleteUser() {
+    if (!confirm('Вы уверены, что хотите удалить этого пользователя? Это действие нельзя отменить.')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/admin/users/${userId}`, {
+            method: 'DELETE'
+        });
+        
+        if (response.ok) {
+            alert('Пользователь успешно удален');
+            window.location.href = '/admin/users';
+        } else {
+            const error = await response.json();
+            alert('Ошибка: ' + (error.detail || 'Неизвестная ошибка'));
+        }
+    } catch (error) {
+        alert('Ошибка: ' + error.message);
+    }
+}
+</script>
+{% endblock %}
+

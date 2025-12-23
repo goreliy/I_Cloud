@@ -1,0 +1,39 @@
+<svg width="120" height="350" xmlns="http://www.w3.org/2000/svg">
+    <!-- Шкала термометра -->
+    <rect x="45" y="30" width="30" height="240" fill="#f0f0f0" stroke="#333" stroke-width="2" rx="15"/>
+    
+    <!-- Столбик ртути (высота меняется) -->
+    <rect id="mercury-column" x="50" y="180" width="20" height="90" fill="#ff4444" opacity="0.8"/>
+    
+    <!-- Колба внизу -->
+    <circle cx="60" cy="285" r="25" fill="#ff4444" stroke="#333" stroke-width="2"/>
+    
+    <!-- Трубка -->
+    <rect x="50" y="270" width="20" height="15" fill="#ff4444"/>
+    
+    <!-- Значение температуры -->
+    <text id="temp-value" x="60" y="325" text-anchor="middle" font-size="24" font-weight="bold">25°C</text>
+    
+    <!-- Метки шкалы -->
+    <text x="25" y="50" font-size="12" fill="#666">40</text>
+    <text x="25" y="110" font-size="12" fill="#666">30</text>
+    <text x="25" y="170" font-size="12" fill="#666">20</text>
+    <text x="25" y="230" font-size="12" fill="#666">10</text>
+    <text x="25" y="270" font-size="12" fill="#666">0</text>
+</svg>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

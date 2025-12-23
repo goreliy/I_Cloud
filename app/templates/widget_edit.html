@@ -1,0 +1,391 @@
+{% extends "base.html" %}
+
+{% block title %}Редактировать виджет - {{ widget.name }} - {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-10 mx-auto">
+        <h1><i class="bi bi-pencil-square"></i> Редактировать виджет</h1>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="/channels">Каналы</a></li>
+                <li class="breadcrumb-item"><a href="/channels/{{ channel.id }}">{{ channel.name }}</a></li>
+                <li class="breadcrumb-item"><a href="/channels/{{ channel.id }}/widgets">Виджеты</a></li>
+                <li class="breadcrumb-item active">Редактировать</li>
+            </ol>
+        </nav>
+
+        <div class="card">
+            <div class="card-body">
+                <form method="POST" enctype="multipart/form-data" id="editForm" data-channel-id="{{ channel.id }}" data-widget-id="{{ widget.id }}">
+                    <input type="hidden" name="ai_service_id" id="ai_service_id_input">
+                    <input type="hidden" name="prompt_used" id="prompt_used_input">
+                    <input type="hidden" name="version_comment" id="version_comment_input">
+                    <div class="mb-3">
+                        <label for="name" class="form-label">Название виджета *</label>
+                        <input type="text" class="form-control" id="name" name="name" 
+                               value="{{ widget.name }}" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Тип виджета</label>
+                        <input type="text" class="form-control" value="{{ widget.widget_type }}" disabled>
+                        <small class="text-muted">Тип нельзя изменить после создания</small>
+                    </div>
+                    
+                    <!-- SVG Section -->
+                    {% if widget.widget_type == 'svg' %}
+                    <div id="svg-section">
+                        <div class="mb-3">
+                            <label class="form-label">Текущий SVG</label>
+                            <div class="border p-3 text-center bg-light">
+                                <object data="{{ widget.svg_file_url }}" type="image/svg+xml" 
+                                        style="max-width: 100%; height: {{ widget.height }}px;">
+                                </object>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="file" class="form-label">Заменить SVG файл (опционально)</label>
+                            <input type="file" class="form-control" id="file" name="file" accept=".svg">
+                            <small class="text-muted">Оставьте пустым чтобы не менять SVG</small>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Привязки параметров</label>
+                            <div id="bindings-container">
+                                <!-- Загружаются через JavaScript -->
+                            </div>
+                            <button type="button" class="btn btn-sm btn-secondary" onclick="addBinding()">
+                                <i class="bi bi-plus"></i> Добавить привязку
+                            </button>
+                            <input type="hidden" name="svg_bindings" id="svg_bindings_input">
+                        </div>
+                    </div>
+                    {% endif %}
+                    
+                    <!-- HTML/JS Section -->
+                    {% if widget.widget_type == 'html' %}
+                    <div id="html-section">
+                        <div class="card mb-4" id="ai-generator-card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <span><i class="bi bi-stars"></i> Генерация обновлений через ИИ</span>
+                                <span class="badge bg-primary" id="ai-active-service-label">Сервис не выбран</span>
+                            </div>
+                            <div class="card-body">
+                                <p class="text-muted small mb-3">
+                                    1) Выберите сервис ИИ (ChatGPT, Claude и т.д.) → 2) Внутри сервиса выберите модель (GPT-4, Claude 3 и т.д.) → 3) Скопируйте предпромпт → 4) Вставьте в чат ИИ и дождитесь ответа → 5) Вставьте сырой ответ и нажмите «Распарсить».
+                                </p>
+                                <div class="d-flex flex-wrap gap-2 mb-3" id="ai-service-list"></div>
+                                <div class="row g-4">
+                                    <div class="col-lg-6">
+                                        <label class="form-label fw-semibold">Ваше задание</label>
+                                        <textarea class="form-control" id="ai-user-request" rows="4" placeholder="Опишите, что изменить / добавить во виджете"></textarea>
+                                        <div class="d-flex gap-2 mt-2">
+                                            <button type="button" class="btn btn-outline-primary btn-sm" id="ai-rebuild-full-prompt">
+                                                <i class="bi bi-magic"></i> Сформировать промпт
+                                            </button>
+                                            <button type="button" class="btn btn-outline-secondary btn-sm" data-ai-copy="#ai-full-prompt">
+                                                <i class="bi bi-clipboard"></i> Скопировать промпт
+                                            </button>
+                                        </div>
+                                        <div class="mt-3">
+                                            <label class="form-label fw-semibold">Сформированный промпт</label>
+                                            <textarea class="form-control font-monospace" id="ai-full-prompt" rows="10" readonly>Выберите сервис и опишите задачу, чтобы сформировать полный промпт.</textarea>
+                                        </div>
+                                        <label class="form-label fw-semibold">Общий предпромпт</label>
+                                        <textarea class="form-control font-monospace" id="ai-prompt-common" rows="8" readonly>Выберите сервис, чтобы получить текст промпта.</textarea>
+                                        <div class="d-flex gap-2 mt-2">
+                                            <button type="button" class="btn btn-outline-secondary btn-sm" data-ai-copy="#ai-prompt-common">
+                                                <i class="bi bi-clipboard"></i> Копировать
+                                            </button>
+                                            <button type="button" class="btn btn-outline-primary btn-sm" id="ai-refresh-prompt">
+                                                <i class="bi bi-arrow-repeat"></i> Обновить
+                                            </button>
+                                        </div>
+                                        <div class="mt-3">
+                                            <label class="form-label small mb-1">HTML подсказка</label>
+                                            <textarea class="form-control font-monospace" id="ai-prompt-html" rows="3" readonly></textarea>
+                                        </div>
+                                        <div class="mt-2">
+                                            <label class="form-label small mb-1">CSS подсказка</label>
+                                            <textarea class="form-control font-monospace" id="ai-prompt-css" rows="3" readonly></textarea>
+                                        </div>
+                                        <div class="mt-2">
+                                            <label class="form-label small mb-1">JS подсказка</label>
+                                            <textarea class="form-control font-monospace" id="ai-prompt-js" rows="3" readonly></textarea>
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-6">
+                                        <label class="form-label fw-semibold">Окно сервиса</label>
+                                        <iframe id="ai-service-frame" class="w-100 border rounded" style="min-height: 340px;" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+                                        <div class="mt-2">
+                                            <a id="ai-open-new-tab" href="#" target="_blank" class="btn btn-sm btn-outline-secondary">
+                                                <i class="bi bi-box-arrow-up-right"></i> Открыть в новой вкладке
+                                            </a>
+                                        </div>
+                                        <p class="text-muted small mt-2">Если сайт запрещает встраивание, откройте ссылку в новой вкладке.</p>
+                                        <label class="form-label mt-3">Ответ ИИ</label>
+                                        <textarea class="form-control font-monospace" id="ai-response-raw" rows="6" placeholder="Вставьте сюда ответ из чата"></textarea>
+                                        <div class="d-flex gap-2 mt-2">
+                                            <button type="button" class="btn btn-outline-primary btn-sm" id="ai-parse-response">
+                                                <i class="bi bi-code-square"></i> Распарсить
+                                            </button>
+                                            <button type="button" class="btn btn-outline-secondary btn-sm" id="ai-clear-response">
+                                                <i class="bi bi-x-circle"></i> Очистить
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row g-3 mt-3">
+                                    <div class="col-md-4">
+                                        <label class="form-label">HTML</label>
+                                        <textarea class="form-control font-monospace" id="ai-response-html" rows="6"></textarea>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">CSS</label>
+                                        <textarea class="form-control font-monospace" id="ai-response-css" rows="6"></textarea>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">JavaScript</label>
+                                        <textarea class="form-control font-monospace" id="ai-response-js" rows="6"></textarea>
+                                    </div>
+                                </div>
+                                <div class="row g-3 mt-3">
+                                    <div class="col-md-8">
+                                        <label class="form-label">Комментарий версии</label>
+                                        <input type="text" class="form-control" id="ai-version-comment" placeholder="Например: Улучшение цвета индикатора">
+                                    </div>
+                                    <div class="col-md-4 d-flex align-items-end">
+                                        <button type="button" class="btn btn-success w-100" id="ai-apply-response">
+                                            <i class="bi bi-download"></i> Вставить в поля ниже
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card mb-4" id="ai-refine-card">
+                            <div class="card-header">
+                                <i class="bi bi-chat-dots"></i> Уточнить ответ
+                            </div>
+                            <div class="card-body">
+                                <div class="mb-3">
+                                    <label class="form-label">Что нужно поправить</label>
+                                    <textarea class="form-control" id="ai-refine-feedback" rows="3" placeholder="Опишите изменения, которые нужно внести"></textarea>
+                                </div>
+                                <div class="d-flex gap-2 mb-3">
+                                    <button type="button" class="btn btn-outline-primary" id="ai-generate-refine">
+                                        <i class="bi bi-arrow-repeat"></i> Сгенерировать уточнение
+                                    </button>
+                                    <button type="button" class="btn btn-outline-secondary" data-ai-copy="#ai-refine-result">
+                                        <i class="bi bi-clipboard"></i> Скопировать текст уточнения
+                                    </button>
+                                </div>
+                                <textarea class="form-control font-monospace" id="ai-refine-result" rows="5" placeholder="Здесь появится уточняющий промпт"></textarea>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="html_code" class="form-label">HTML код</label>
+                            <textarea class="form-control font-monospace" id="html_code" 
+                                      name="html_code" rows="10">{{ widget.html_code or '' }}</textarea>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="css_code" class="form-label">CSS код</label>
+                            <textarea class="form-control font-monospace" id="css_code" 
+                                      name="css_code" rows="5">{{ widget.css_code or '' }}</textarea>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="js_code" class="form-label">JavaScript код</label>
+                            <textarea class="form-control font-monospace" id="js_code" 
+                                      name="js_code" rows="10">{{ widget.js_code or '' }}</textarea>
+                        </div>
+
+                        <div class="card mb-4">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <span><i class="bi bi-clock-history"></i> История версий</span>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="ai-refresh-versions">
+                                    <i class="bi bi-arrow-repeat"></i>
+                                </button>
+                            </div>
+                            <div class="card-body" id="widget-version-list">
+                                <div class="text-muted small">Загрузка истории...</div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <label for="width" class="form-label">Ширина (колонок 1-12)</label>
+                            <input type="number" class="form-control" id="width" name="width" 
+                                   value="{{ widget.width }}" min="1" max="12">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="height" class="form-label">Высота (px)</label>
+                            <input type="number" class="form-control" id="height" name="height" 
+                                   value="{{ widget.height }}" min="100" max="1000">
+                        </div>
+                    </div>
+                    
+                    <div class="d-grid gap-2 d-md-flex mt-4">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-circle"></i> Сохранить изменения
+                        </button>
+                        <a href="/channels/{{ channel.id }}/widgets" class="btn btn-outline-secondary">
+                            <i class="bi bi-x-circle"></i> Отмена
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="versionPreviewModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-eye"></i> Предпросмотр версии</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small" data-preview-meta></p>
+                <h6>HTML</h6>
+                <pre class="bg-light p-3 rounded"><code data-preview-html></code></pre>
+                <h6>CSS</h6>
+                <pre class="bg-light p-3 rounded"><code data-preview-css></code></pre>
+                <h6>JavaScript</h6>
+                <pre class="bg-light p-3 rounded"><code data-preview-js></code></pre>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+            </div>
+        </div>
+    </div>
+ </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  // Глобальная переменная для root_path (используется в ai_widget.js)
+  window.ROOT_PATH = {{ root_path|tojson if root_path else '""' }};
+  console.log('[Template] window.ROOT_PATH установлен:', window.ROOT_PATH);
+</script>
+<script src="/static/js/ai_widget.js"></script>
+<script>
+let bindingsCount = 0;
+const existingBindings = {{ widget.svg_bindings | safe }};
+
+function addBinding(binding = null) {
+    const container = document.getElementById('bindings-container');
+    const html = `
+        <div class="card mb-2" id="binding-${bindingsCount}">
+            <div class="card-body p-2">
+                <div class="row g-2">
+                    <div class="col-md-3">
+                        <input type="text" class="form-control form-control-sm" 
+                               id="binding_element_${bindingsCount}" 
+                               value="${binding ? binding.elementId : ''}"
+                               placeholder="element-id">
+                        <small class="text-muted">ID элемента SVG</small>
+                    </div>
+                    <div class="col-md-2">
+                        <select class="form-select form-select-sm" id="binding_field_${bindingsCount}">
+                            <option value="field1" ${binding && binding.field === 'field1' ? 'selected' : ''}>Field 1</option>
+                            <option value="field2" ${binding && binding.field === 'field2' ? 'selected' : ''}>Field 2</option>
+                            <option value="field3" ${binding && binding.field === 'field3' ? 'selected' : ''}>Field 3</option>
+                            <option value="field4" ${binding && binding.field === 'field4' ? 'selected' : ''}>Field 4</option>
+                            <option value="field5" ${binding && binding.field === 'field5' ? 'selected' : ''}>Field 5</option>
+                            <option value="field6" ${binding && binding.field === 'field6' ? 'selected' : ''}>Field 6</option>
+                            <option value="field7" ${binding && binding.field === 'field7' ? 'selected' : ''}>Field 7</option>
+                            <option value="field8" ${binding && binding.field === 'field8' ? 'selected' : ''}>Field 8</option>
+                        </select>
+                        <small class="text-muted">Поле</small>
+                    </div>
+                    <div class="col-md-3">
+                        <input type="text" class="form-control form-control-sm" 
+                               id="binding_format_${bindingsCount}" 
+                               value="${binding ? binding.format : '{value}'}"
+                               placeholder="{value}°C">
+                        <small class="text-muted">Формат</small>
+                    </div>
+                    <div class="col-md-3">
+                        <select class="form-select form-select-sm" id="binding_property_${bindingsCount}">
+                            <option value="textContent" ${binding && binding.property === 'textContent' ? 'selected' : ''}>Текст</option>
+                            <option value="fill" ${binding && binding.property === 'fill' ? 'selected' : ''}>Заливка</option>
+                            <option value="stroke" ${binding && binding.property === 'stroke' ? 'selected' : ''}>Линия</option>
+                            <option value="width" ${binding && binding.property === 'width' ? 'selected' : ''}>Ширина</option>
+                            <option value="height" ${binding && binding.property === 'height' ? 'selected' : ''}>Высота</option>
+                            <option value="opacity" ${binding && binding.property === 'opacity' ? 'selected' : ''}>Прозрачность</option>
+                            <option value="transform" ${binding && binding.property === 'transform' ? 'selected' : ''}>Transform</option>
+                        </select>
+                        <small class="text-muted">Свойство</small>
+                    </div>
+                    <div class="col-md-1">
+                        <button type="button" class="btn btn-sm btn-danger" onclick="removeBinding(${bindingsCount})">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    container.insertAdjacentHTML('beforeend', html);
+    bindingsCount++;
+}
+
+function removeBinding(id) {
+    document.getElementById(`binding-${id}`).remove();
+}
+
+// Загрузить существующие привязки
+if (existingBindings) {
+    try {
+        const bindings = JSON.parse(existingBindings);
+        bindings.forEach(binding => {
+            addBinding(binding);
+        });
+    } catch (e) {
+        console.error('Error parsing bindings:', e);
+    }
+}
+
+// При submit - собрать привязки
+document.getElementById('editForm').addEventListener('submit', function(e) {
+    const bindings = [];
+    for (let i = 0; i < bindingsCount; i++) {
+        const elementInput = document.getElementById(`binding_element_${i}`);
+        if (elementInput && elementInput.value) {
+            bindings.push({
+                elementId: elementInput.value,
+                field: document.getElementById(`binding_field_${i}`).value,
+                format: document.getElementById(`binding_format_${i}`).value,
+                property: document.getElementById(`binding_property_${i}`).value
+            });
+        }
+    }
+    
+    document.getElementById('svg_bindings_input').value = JSON.stringify(bindings);
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+    if (window.AIWidgetManager && '{{ widget.widget_type }}' === 'html') {
+        window.AIWidgetManager.init({
+            mode: 'edit',
+            channelId: {{ channel.id }},
+            widgetId: {{ widget.id }},
+            formId: 'editForm',
+        });
+    }
+});
+</script>
+{% endblock %}
+
+
+
+
+
+
+

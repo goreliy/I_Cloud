@@ -1,0 +1,31 @@
+<svg width="250" height="180" xmlns="http://www.w3.org/2000/svg">
+    <!-- Фон дуги -->
+    <path d="M 30,140 A 95,95 0 0,1 220,140" stroke="#e0e0e0" fill="none" stroke-width="20" stroke-linecap="round"/>
+    
+    <!-- Зеленая зона -->
+    <path d="M 30,140 A 95,95 0 0,1 105,50" stroke="#4CAF50" fill="none" stroke-width="20" stroke-linecap="round"/>
+    
+    <!-- Желтая зона -->
+    <path d="M 105,50 A 95,95 0 0,1 145,50" stroke="#FFC107" fill="none" stroke-width="20" stroke-linecap="round"/>
+    
+    <!-- Красная зона -->
+    <path d="M 145,50 A 95,95 0 0,1 220,140" stroke="#F44336" fill="none" stroke-width="20" stroke-linecap="round"/>
+    
+    <!-- Центр -->
+    <circle cx="125" cy="140" r="12" fill="#333"/>
+    
+    <!-- Стрелка (поворачивается по значению) -->
+    <line id="gauge-needle" x1="125" y1="140" x2="125" y2="60" 
+          stroke="#333" stroke-width="4" stroke-linecap="round"
+          transform="rotate(-90 125 140)"/>
+    
+    <!-- Значение -->
+    <text id="gauge-value" x="125" y="165" text-anchor="middle" font-size="24" font-weight="bold">50</text>
+    
+    <!-- Метки -->
+    <text x="20" y="150" font-size="12" fill="#666">0</text>
+    <text x="115" y="35" font-size="12" fill="#666">50</text>
+    <text x="210" y="150" font-size="12" fill="#666">100</text>
+</svg>
+
+

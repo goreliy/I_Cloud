@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+
+{% block title %}Статистика канала {{ channel.name }} - Админ панель - {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1><i class="bi bi-graph-up"></i> Статистика канала: {{ channel.name }}</h1>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="/">Главная</a></li>
+                <li class="breadcrumb-item"><a href="/admin">Админ</a></li>
+                <li class="breadcrumb-item"><a href="/admin/channels">Каналы</a></li>
+                <li class="breadcrumb-item active">Статистика</li>
+            </ol>
+        </nav>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card text-bg-primary">
+            <div class="card-body">
+                <h5 class="card-title">Всего записей</h5>
+                <h2 class="mb-0">{{ stats.total_feeds }}</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-bg-info">
+            <div class="card-body">
+                <h5 class="card-title">За последние 24ч</h5>
+                <h2 class="mb-0">{{ stats.recent_count }}</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-bg-success">
+            <div class="card-body">
+                <h5 class="card-title">Средний интервал</h5>
+                <h2 class="mb-0">
+                    {% if stats.avg_interval_seconds %}
+                        {% if stats.avg_interval_seconds < 60 %}
+                            {{ "%.1f"|format(stats.avg_interval_seconds) }}с
+                        {% elif stats.avg_interval_seconds < 3600 %}
+                            {{ "%.1f"|format(stats.avg_interval_seconds / 60) }}м
+                        {% else %}
+                            {{ "%.1f"|format(stats.avg_interval_seconds / 3600) }}ч
+                        {% endif %}
+                    {% else %}
+                        -
+                    {% endif %}
+                </h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-bg-warning">
+            <div class="card-body">
+                <h5 class="card-title">Мин. интервал</h5>
+                <h2 class="mb-0">
+                    {% if stats.min_interval_seconds %}
+                        {% if stats.min_interval_seconds < 60 %}
+                            {{ "%.1f"|format(stats.min_interval_seconds) }}с
+                        {% elif stats.min_interval_seconds < 3600 %}
+                            {{ "%.1f"|format(stats.min_interval_seconds / 60) }}м
+                        {% else %}
+                            {{ "%.1f"|format(stats.min_interval_seconds / 3600) }}ч
+                        {% endif %}
+                    {% else %}
+                        -
+                    {% endif %}
+                </h2>
+                <small>Максимальная нагрузка</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Детальная информация</h5>
+            </div>
+            <div class="card-body">
+                <table class="table">
+                    <tr>
+                        <th>ID канала</th>
+                        <td>{{ channel.id }}</td>
+                    </tr>
+                    <tr>
+                        <th>Название</th>
+                        <td>{{ channel.name }}</td>
+                    </tr>
+                    <tr>
+                        <th>Последняя запись</th>
+                        <td>
+                            {% if stats.last_feed_at %}
+                                {{ stats.last_feed_at.strftime('%Y-%m-%d %H:%M:%S') }}
+                            {% else %}
+                                Нет записей
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Средний интервал между записями</th>
+                        <td>
+                            {% if stats.avg_interval_seconds %}
+                                {{ "%.2f"|format(stats.avg_interval_seconds) }} секунд
+                            {% else %}
+                                Недостаточно данных (нужно минимум 2 записи)
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Минимальный интервал (максимальная нагрузка)</th>
+                        <td>
+                            {% if stats.min_interval_seconds %}
+                                {{ "%.2f"|format(stats.min_interval_seconds) }} секунд
+                            {% else %}
+                                Недостаточно данных
+                            {% endif %}
+                        </td>
+                    </tr>
+                </table>
+                
+                <a href="/admin/channels" class="btn btn-secondary">
+                    <i class="bi bi-arrow-left"></i> Назад к списку каналов
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

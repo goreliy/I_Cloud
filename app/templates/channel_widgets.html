@@ -1,0 +1,1014 @@
+{% extends "base.html" %}
+
+{% block title %}Виджеты - {{ channel.name }} - {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1><i class="bi bi-grid-3x3"></i> Виджеты канала: {{ channel.name }}</h1>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="/channels">Каналы</a></li>
+                <li class="breadcrumb-item"><a href="/channels/{{ channel.id }}">{{ channel.name }}</a></li>
+                <li class="breadcrumb-item active">Виджеты</li>
+            </ol>
+        </nav>
+    </div>
+</div>
+
+{% if request.query_params.get('success') %}
+<div class="alert alert-success alert-dismissible fade show">
+    <i class="bi bi-check-circle"></i> Виджет успешно создан!
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
+
+<!-- Кнопка добавления -->
+<div class="mb-4">
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addWidgetModal">
+        <i class="bi bi-plus-circle"></i> Добавить виджет
+    </button>
+    <a href="/channels/{{ channel.id }}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> Назад к каналу
+    </a>
+</div>
+
+<!-- Список виджетов -->
+{% if widgets %}
+<div class="row">
+    {% for widget in widgets %}
+    <div class="col-md-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">{{ widget.name }}</h5>
+                <span class="badge bg-info">{{ widget.widget_type }}</span>
+            </div>
+            <div class="card-body">
+                <!-- Предпросмотр SVG -->
+                {% if widget.svg_file_url %}
+                <div class="mb-3 text-center">
+                    <object data="{{ widget.svg_file_url }}" type="image/svg+xml" 
+                            style="max-width: 100%; height: {{ widget.height }}px; border: 1px solid #ddd;">
+                    </object>
+                </div>
+                {% endif %}
+                
+                <!-- Информация -->
+                <div class="small text-muted">
+                    <p class="mb-1"><strong>Размер:</strong> {{ widget.width }} колонок × {{ widget.height }}px</p>
+                    {% if widget.svg_bindings %}
+                    <p class="mb-1"><strong>Привязок:</strong> {{ widget.svg_bindings.count('{') }}</p>
+                    {% endif %}
+                    <p class="mb-0"><strong>Создан:</strong> {{ widget.created_at.strftime('%d.%m.%Y %H:%M') }}</p>
+                </div>
+            </div>
+            <div class="card-footer d-flex justify-content-between">
+                <div>
+                    <a href="/channels/{{ channel.id }}/widgets/{{ widget.id }}/edit" class="btn btn-sm btn-primary">
+                        <i class="bi bi-pencil"></i> Редактировать
+                    </a>
+                    <button class="btn btn-sm btn-danger" onclick="deleteWidget({{ widget.id }})">
+                        <i class="bi bi-trash"></i> Удалить
+                    </button>
+                </div>
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" {% if widget.is_active %}checked{% endif %} 
+                           onchange="toggleWidget({{ widget.id }}, this.checked)">
+                    <label class="form-check-label small">Активен</label>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="alert alert-info">
+    <i class="bi bi-info-circle"></i> У этого канала пока нет виджетов. Создайте первый!
+</div>
+{% endif %}
+
+<!-- Модальное окно создания виджета -->
+<div class="modal fade" id="addWidgetModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Добавить виджет</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="widgetForm" enctype="multipart/form-data" data-channel-id="{{ channel.id }}">
+                <div class="modal-body">
+                    <input type="hidden" name="ai_service_id" id="ai_service_id_input">
+                    <input type="hidden" name="prompt_used" id="prompt_used_input">
+                    <input type="hidden" name="version_comment" id="version_comment_input">
+                    <div class="mb-3">
+                        <label class="form-label">Название виджета *</label>
+                        <input type="text" class="form-control" name="name" required 
+                               placeholder="Например: Датчик температуры">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Тип виджета</label>
+                        <select class="form-select" name="widget_type" id="widgetTypeSelect" onchange="toggleWidgetType()">
+                            <option value="svg">SVG виджет</option>
+                            <option value="html">Custom HTML/JS</option>
+                        </select>
+                    </div>
+
+                    <div class="card mb-4" id="ai-generator-card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <span><i class="bi bi-stars"></i> Генерация с помощью открытых ИИ</span>
+                            <span class="badge bg-secondary" id="ai-active-service-label">Сервис не выбран</span>
+                        </div>
+                        <div class="card-body">
+                            <p class="text-muted small mb-3">
+                                1) Выберите сервис ИИ (ChatGPT, Claude и т.д.) → 2) Внутри сервиса выберите модель (GPT-4, Claude 3 и т.д.) → 3) Скопируйте предпромпт → 4) Вставьте в чат ИИ и дождитесь ответа → 5) Вставьте сырой ответ и нажмите «Распарсить».
+                            </p>
+                            <div class="d-flex flex-wrap gap-2 mb-3" id="ai-service-list"></div>
+                            <div class="row g-4">
+                                <div class="col-lg-6">
+                                    <label class="form-label fw-semibold">Ваше задание</label>
+                                    <textarea class="form-control" id="ai-user-request" rows="4" placeholder="Опишите, какой виджет нужен (элементы, логика, цвета, управление)"></textarea>
+                                    <div class="d-flex gap-2 mt-2">
+                                        <button type="button" class="btn btn-outline-primary btn-sm" id="ai-rebuild-full-prompt">
+                                            <i class="bi bi-magic"></i> Сформировать промпт
+                                        </button>
+                                        <button type="button" class="btn btn-outline-secondary btn-sm" data-ai-copy="#ai-full-prompt">
+                                            <i class="bi bi-clipboard"></i> Скопировать промпт
+                                        </button>
+                                    </div>
+                                    <div class="mt-3">
+                                        <label class="form-label fw-semibold">Сформированный промпт</label>
+                                        <textarea class="form-control font-monospace" id="ai-full-prompt" rows="10" readonly>Выберите сервис и опишите задачу, чтобы сформировать полный промпт.</textarea>
+                                    </div>
+                                    <label class="form-label fw-semibold">Общий предпромпт</label>
+                                    <textarea class="form-control font-monospace" id="ai-prompt-common" rows="8" readonly>Выберите сервис, чтобы получить предпромпт.</textarea>
+                                    <div class="d-flex gap-2 mt-2">
+                                        <button type="button" class="btn btn-outline-secondary btn-sm" data-ai-copy="#ai-prompt-common">
+                                            <i class="bi bi-clipboard"></i> Скопировать
+                                        </button>
+                                        <button type="button" class="btn btn-outline-primary btn-sm" id="ai-refresh-prompt">
+                                            <i class="bi bi-arrow-repeat"></i> Обновить
+                                        </button>
+                                    </div>
+                                    <div class="mt-3">
+                                        <label class="form-label small mb-1">HTML подсказка</label>
+                                        <textarea class="form-control font-monospace" id="ai-prompt-html" rows="3" readonly></textarea>
+                                    </div>
+                                    <div class="mt-2">
+                                        <label class="form-label small mb-1">CSS подсказка</label>
+                                        <textarea class="form-control font-monospace" id="ai-prompt-css" rows="3" readonly></textarea>
+                                    </div>
+                                    <div class="mt-2">
+                                        <label class="form-label small mb-1">JS подсказка</label>
+                                        <textarea class="form-control font-monospace" id="ai-prompt-js" rows="3" readonly></textarea>
+                                    </div>
+                                </div>
+                                <div class="col-lg-6">
+                                    <label class="form-label fw-semibold">Окно сервиса</label>
+                                    <iframe id="ai-service-frame" class="w-100 border rounded" style="min-height: 340px;" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+                                    <div class="mt-2">
+                                        <a id="ai-open-new-tab" href="#" target="_blank" class="btn btn-sm btn-outline-secondary">
+                                            <i class="bi bi-box-arrow-up-right"></i> Открыть в новой вкладке
+                                        </a>
+                                    </div>
+                                    <p class="text-muted small mt-2">Если сервис не отображается, откройте ссылку в новой вкладке.</p>
+                                    <label class="form-label mt-3">Ответ ИИ (вставьте целиком)</label>
+                                    <textarea class="form-control font-monospace" id="ai-response-raw" rows="6" placeholder="Вставьте сюда ответ из чата со всеми кодовыми блоками"></textarea>
+                                    <div class="d-flex gap-2 mt-2">
+                                        <button type="button" class="btn btn-outline-primary btn-sm" id="ai-parse-response">
+                                            <i class="bi bi-code-square"></i> Распарсить
+                                        </button>
+                                        <button type="button" class="btn btn-outline-secondary btn-sm" id="ai-clear-response">
+                                            <i class="bi bi-x-circle"></i> Очистить
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="row g-3 mt-3">
+                                <div class="col-md-4">
+                                    <label class="form-label">HTML</label>
+                                    <textarea class="form-control font-monospace" id="ai-response-html" rows="6"></textarea>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">CSS</label>
+                                    <textarea class="form-control font-monospace" id="ai-response-css" rows="6"></textarea>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">JavaScript</label>
+                                    <textarea class="form-control font-monospace" id="ai-response-js" rows="6"></textarea>
+                                </div>
+                            </div>
+                            <div class="row g-3 mt-3">
+                                <div class="col-md-8">
+                                    <label class="form-label">Комментарий версии</label>
+                                    <input type="text" class="form-control" id="ai-version-comment" placeholder="Например: Генерация через DeepSeek">
+                                </div>
+                                <div class="col-md-4 d-flex align-items-end">
+                                    <button type="button" class="btn btn-success w-100" id="ai-apply-response">
+                                        <i class="bi bi-download"></i> Вставить в форму
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- SVG Section -->
+                    <div id="svgSection">
+                        <div class="mb-3">
+                            <label class="form-label">Загрузить SVG файл *</label>
+                            <input type="file" class="form-control" name="file" accept=".svg">
+                            <small class="text-muted">Максимум 1MB. Или выберите готовый шаблон ниже.</small>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Готовые шаблоны SVG</label>
+                            <div class="row g-2">
+                                <div class="col-4">
+                                    <div class="card text-center" style="cursor: pointer;" onclick="selectTemplate('thermometer')">
+                                        <div class="card-body p-2">
+                                            <img src="/static/svg_templates/thermometer.svg" style="height: 60px;">
+                                            <p class="small mb-0">Термометр</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-4">
+                                    <div class="card text-center" style="cursor: pointer;" onclick="selectTemplate('gauge')">
+                                        <div class="card-body p-2">
+                                            <img src="/static/svg_templates/gauge.svg" style="height: 60px;">
+                                            <p class="small mb-0">Датчик</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-4">
+                                    <div class="card text-center" style="cursor: pointer;" onclick="selectTemplate('level')">
+                                        <div class="card-body p-2">
+                                            <img src="/static/svg_templates/level.svg" style="height: 60px;">
+                                            <p class="small mb-0">Уровень</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Привязки параметров</label>
+                            <div id="bindings-container">
+                                <!-- Динамически добавляются -->
+                            </div>
+                            <button type="button" class="btn btn-sm btn-secondary" onclick="addBinding()">
+                                <i class="bi bi-plus"></i> Добавить привязку
+                            </button>
+                            <input type="hidden" name="svg_bindings" id="svg_bindings_input">
+                        </div>
+                    </div>
+                    
+                    <!-- HTML Section (скрыто по умолчанию) -->
+                    <div id="htmlSection" style="display: none;">
+                        <div class="mb-3">
+                            <label class="form-label">Готовые шаблоны виджетов</label>
+                            <div class="row g-2">
+                                <div class="col-4">
+                                    <div class="card text-center" style="cursor: pointer;" onclick="createSliderWidget()">
+                                        <div class="card-body p-3">
+                                            <i class="bi bi-sliders" style="font-size: 40px; color: #0d6efd;"></i>
+                                            <p class="small mb-0 mt-2"><strong>Ползунок</strong></p>
+                                            <p class="text-muted" style="font-size: 10px;">Управление значением</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-4">
+                                    <div class="card text-center" style="cursor: pointer;" onclick="createButtonWidget()">
+                                        <div class="card-body p-3">
+                                            <i class="bi bi-circle-fill" style="font-size: 40px; color: #198754;"></i>
+                                            <p class="small mb-0 mt-2"><strong>Кнопка</strong></p>
+                                            <p class="text-muted" style="font-size: 10px;">Вкл/Выкл</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-4">
+                                    <div class="card text-center" style="cursor: pointer;" onclick="createToggleWidget()">
+                                        <div class="card-body p-3">
+                                            <i class="bi bi-toggle-on" style="font-size: 40px; color: #fd7e14;"></i>
+                                            <p class="small mb-0 mt-2"><strong>Переключатель</strong></p>
+                                            <p class="text-muted" style="font-size: 10px;">ON/OFF</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <small class="text-muted d-block mt-2">
+                                <i class="bi bi-shield-check"></i> Все виджеты используют безопасный API с JWT авторизацией
+                            </small>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Или введите свой HTML код</label>
+                            <textarea class="form-control font-monospace" name="html_code" rows="10"><!-- 
+  ПРИМЕР ВИДЖЕТА:
+  Вы можете создать любую HTML структуру для отображения данных
+-->
+
+<div class="widget-container">
+    <h2 id="value-display">--</h2>
+    <p class="label">Температура</p>
+    <div class="status" id="status-indicator">●</div>
+</div></textarea>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">CSS код</label>
+                            <textarea class="form-control font-monospace" name="css_code" rows="8">/* Стили для вашего виджета */
+
+.widget-container {
+    text-align: center;
+    padding: 30px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 15px;
+    color: white;
+}
+
+#value-display {
+    font-size: 48px;
+    font-weight: bold;
+    margin: 10px 0;
+}
+
+.label {
+    font-size: 16px;
+    opacity: 0.9;
+}
+
+.status {
+    font-size: 24px;
+    margin-top: 10px;
+}</textarea>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">JavaScript код</label>
+                            <textarea class="form-control font-monospace" name="js_code" rows="15">/* 
+  ДОСТУПНЫЕ ДАННЫЕ от канала {{ channel.id }}:
+  
+  window.channelData = {
+      id: {{ channel.id }},
+      name: "{{ channel.name }}",
+      fields: {
+          field1: 25.5,  // Последнее значение field1
+          field2: 60.2,  // Последнее значение field2
+          field3: null,  // ... и так далее до field8
+      },
+      lastUpdate: "2024-01-01T12:00:00Z"
+  };
+  
+  ФУНКЦИЯ ОБНОВЛЕНИЯ (вызывается каждые 5 секунд):
+*/
+
+function onDataUpdate(newData) {
+    // newData содержит: field1, field2, ..., field8
+    
+    // Обновить значение
+    const temp = newData.field1;
+    document.getElementById('value-display').textContent = temp + '°C';
+    
+    // Изменить цвет по условию
+    const statusEl = document.getElementById('status-indicator');
+    if (temp > 30) {
+        statusEl.style.color = 'red';
+        statusEl.title = 'Критично!';
+    } else if (temp > 20) {
+        statusEl.style.color = 'yellow';
+        statusEl.title = 'Нормально';
+    } else {
+        statusEl.style.color = 'green';
+        statusEl.title = 'Холодно';
+    }
+}
+
+// ПЕРВИЧНАЯ ЗАГРУЗКА
+// window.channelData уже доступен при загрузке страницы
+if (window.channelData && window.channelData.fields) {
+    onDataUpdate(window.channelData.fields);
+}</textarea>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <label class="form-label">Ширина (колонок 1-12)</label>
+                            <input type="number" class="form-control" name="width" value="6" min="1" max="12">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Высота (px)</label>
+                            <input type="number" class="form-control" name="height" value="300" min="100" max="1000">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-primary">Создать виджет</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  // Глобальная переменная для root_path (используется в ai_widget.js)
+  window.ROOT_PATH = {{ root_path|tojson if root_path else '""' }};
+  console.log('[Template] window.ROOT_PATH установлен:', window.ROOT_PATH);
+</script>
+<script src="/static/js/ai_widget.js"></script>
+<script>
+let bindingsCount = 0;
+
+function toggleWidgetType() {
+    const type = document.getElementById('widgetTypeSelect').value;
+    document.getElementById('svgSection').style.display = type === 'svg' ? 'block' : 'none';
+    document.getElementById('htmlSection').style.display = type === 'html' ? 'block' : 'none';
+    const aiCard = document.getElementById('ai-generator-card');
+    if (aiCard) {
+        aiCard.style.display = type === 'html' ? 'block' : 'none';
+    }
+}
+
+function addBinding() {
+    const container = document.getElementById('bindings-container');
+    const html = `
+        <div class="card mb-2" id="binding-${bindingsCount}">
+            <div class="card-body p-2">
+                <div class="row g-2">
+                    <div class="col-md-3">
+                        <input type="text" class="form-control form-control-sm" 
+                               id="binding_element_${bindingsCount}" 
+                               placeholder="element-id">
+                        <small class="text-muted">ID элемента SVG</small>
+                    </div>
+                    <div class="col-md-2">
+                        <select class="form-select form-select-sm" id="binding_field_${bindingsCount}">
+                            <option value="field1">Field 1</option>
+                            <option value="field2">Field 2</option>
+                            <option value="field3">Field 3</option>
+                            <option value="field4">Field 4</option>
+                            <option value="field5">Field 5</option>
+                            <option value="field6">Field 6</option>
+                            <option value="field7">Field 7</option>
+                            <option value="field8">Field 8</option>
+                        </select>
+                        <small class="text-muted">Поле</small>
+                    </div>
+                    <div class="col-md-3">
+                        <input type="text" class="form-control form-control-sm" 
+                               id="binding_format_${bindingsCount}" 
+                               placeholder="{value}°C">
+                        <small class="text-muted">Формат вывода</small>
+                    </div>
+                    <div class="col-md-3">
+                        <select class="form-select form-select-sm" id="binding_property_${bindingsCount}">
+                            <option value="textContent">Текст</option>
+                            <option value="fill">Заливка</option>
+                            <option value="stroke">Линия</option>
+                            <option value="width">Ширина</option>
+                            <option value="height">Высота</option>
+                            <option value="opacity">Прозрачность</option>
+                            <option value="transform">Transform</option>
+                        </select>
+                        <small class="text-muted">Свойство</small>
+                    </div>
+                    <div class="col-md-1">
+                        <button type="button" class="btn btn-sm btn-danger" onclick="removeBinding(${bindingsCount})">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    container.insertAdjacentHTML('beforeend', html);
+    bindingsCount++;
+}
+
+function removeBinding(id) {
+    document.getElementById(`binding-${id}`).remove();
+}
+
+async function selectTemplate(template) {
+    // Загрузить шаблон
+    const response = await fetch(`/static/svg_templates/${template}.svg`);
+    const blob = await response.blob();
+    const file = new File([blob], `${template}.svg`, { type: 'image/svg+xml' });
+    
+    // Создать DataTransfer для input file
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(file);
+    document.querySelector('[name="file"]').files = dataTransfer.files;
+    
+    // Добавить предустановленные привязки в зависимости от шаблона
+    if (template === 'thermometer') {
+        addBinding();
+        document.getElementById(`binding_element_${bindingsCount - 1}`).value = 'temp-value';
+        document.getElementById(`binding_field_${bindingsCount - 1}`).value = 'field1';
+        document.getElementById(`binding_format_${bindingsCount - 1}`).value = '{value}°C';
+        document.getElementById(`binding_property_${bindingsCount - 1}`).value = 'textContent';
+    } else if (template === 'gauge') {
+        addBinding();
+        document.getElementById(`binding_element_${bindingsCount - 1}`).value = 'gauge-value';
+        document.getElementById(`binding_field_${bindingsCount - 1}`).value = 'field1';
+        document.getElementById(`binding_format_${bindingsCount - 1}`).value = '{value}';
+        document.getElementById(`binding_property_${bindingsCount - 1}`).value = 'textContent';
+        
+        addBinding();
+        document.getElementById(`binding_element_${bindingsCount - 1}`).value = 'gauge-needle';
+        document.getElementById(`binding_field_${bindingsCount - 1}`).value = 'field1';
+        document.getElementById(`binding_format_${bindingsCount - 1}`).value = 'rotate({value} 125 140)';
+        document.getElementById(`binding_property_${bindingsCount - 1}`).value = 'transform';
+    } else if (template === 'level') {
+        addBinding();
+        document.getElementById(`binding_element_${bindingsCount - 1}`).value = 'level-value';
+        document.getElementById(`binding_field_${bindingsCount - 1}`).value = 'field1';
+        document.getElementById(`binding_format_${bindingsCount - 1}`).value = '{value}%';
+        document.getElementById(`binding_property_${bindingsCount - 1}`).value = 'textContent';
+    }
+}
+
+// Submit form
+document.getElementById('widgetForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    // Собрать привязки в JSON
+    const bindings = [];
+    for (let i = 0; i < bindingsCount; i++) {
+        const elementInput = document.getElementById(`binding_element_${i}`);
+        if (elementInput && elementInput.value) {
+            bindings.push({
+                elementId: elementInput.value,
+                field: document.getElementById(`binding_field_${i}`).value,
+                format: document.getElementById(`binding_format_${i}`).value,
+                property: document.getElementById(`binding_property_${i}`).value
+            });
+        }
+    }
+    
+    // Записать в hidden input
+    document.getElementById('svg_bindings_input').value = JSON.stringify(bindings);
+    
+    // Отправить форму
+    const formData = new FormData(this);
+    
+    try {
+        const response = await fetch('/api/channels/{{ channel.id }}/widgets', {
+            method: 'POST',
+            body: formData
+        });
+        
+        if (response.ok) {
+            window.location.href = '/channels/{{ channel.id }}/widgets?success=1';
+        } else {
+            const error = await response.json();
+            alert('Ошибка: ' + (error.detail || 'Неизвестная ошибка'));
+        }
+    } catch (error) {
+        alert('Ошибка: ' + error.message);
+    }
+});
+
+async function deleteWidget(widgetId) {
+    if (!confirm('Удалить этот виджет?')) return;
+    
+    try {
+        const response = await fetch(`/api/channels/{{ channel.id }}/widgets/${widgetId}`, {
+            method: 'DELETE'
+        });
+        
+        if (response.ok || response.status === 204) {
+            location.reload();
+        } else {
+            alert('Ошибка удаления');
+        }
+    } catch (error) {
+        alert('Ошибка: ' + error.message);
+    }
+}
+
+async function toggleWidget(widgetId, isActive) {
+    try {
+        const response = await fetch(`/api/channels/{{ channel.id }}/widgets/${widgetId}`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({is_active: isActive})
+        });
+        
+        if (!response.ok) {
+            alert('Ошибка обновления');
+        }
+    } catch (error) {
+        alert('Ошибка: ' + error.message);
+    }
+}
+
+// Widget templates functions
+function createSliderWidget() {
+    const name = prompt('Название виджета:', 'Контроль температуры');
+    if (!name) return;
+    
+    const field = prompt('Целевое поле (field1-field8):', 'field1');
+    if (!field || !field.match(/^field[1-8]$/)) {
+        alert('❌ Неверное поле! Используйте: field1, field2, ..., field8');
+        return;
+    }
+    
+    const unit = prompt('Единица измерения:', '°C') || '';
+    const min = prompt('Минимальное значение:', '0') || '0';
+    const max = prompt('Максимальное значение:', '100') || '100';
+    const step = prompt('Шаг изменения:', '1') || '1';
+    
+    const widgetId = 'slider_' + Date.now();
+    
+    const html = `<div class="slider-widget">
+  <label class="form-label fw-bold">Значение</label>
+  <div class="d-flex align-items-center gap-3 mb-2">
+    <input type="range" class="form-range flex-grow-1" 
+           id="${widgetId}" 
+           min="${min}" max="${max}" step="${step}" value="${min}">
+    <input type="number" class="form-control" 
+           id="${widgetId}_input" 
+           min="${min}" max="${max}" step="${step}" value="${min}" 
+           style="width: 100px;">
+    ${unit ? `<span class="badge bg-primary fs-6">${unit}</span>` : ''}
+  </div>
+  <div class="d-flex justify-content-between align-items-center">
+    <small class="text-muted">
+      Текущее: <span id="${widgetId}_display" class="fw-bold">${min}</span>${unit}
+    </small>
+    <button id="${widgetId}_btn" class="btn btn-sm btn-success" disabled>
+      <i class="bi bi-check"></i> Готово
+    </button>
+  </div>
+  <div id="${widgetId}_error" class="alert alert-danger mt-2 d-none"></div>
+</div>`;
+    
+    const css = `.slider-widget {
+  padding: 20px;
+  background: #f8f9fa;
+  border-radius: 8px;
+}
+.form-range { cursor: pointer; }
+.form-range::-webkit-slider-thumb { background: #0d6efd; cursor: pointer; }
+.form-range::-moz-range-thumb { background: #0d6efd; cursor: pointer; }`;
+    
+    const js = `const TARGET_FIELD = '${field}';
+
+const slider = document.getElementById('${widgetId}');
+const input = document.getElementById('${widgetId}_input');
+const display = document.getElementById('${widgetId}_display');
+const button = document.getElementById('${widgetId}_btn');
+const errorDiv = document.getElementById('${widgetId}_error');
+
+let currentValue = ${min};
+let pendingValue = ${min};
+
+function updateUI(value) {
+  slider.value = value;
+  input.value = value;
+  display.textContent = value;
+}
+
+slider.oninput = () => {
+  pendingValue = parseFloat(slider.value);
+  input.value = pendingValue;
+  display.textContent = pendingValue;
+  if (pendingValue !== currentValue) {
+    button.disabled = false;
+    button.className = 'btn btn-sm btn-primary';
+    button.innerHTML = '<i class="bi bi-send"></i> Применить';
+  }
+};
+
+input.oninput = () => {
+  pendingValue = parseFloat(input.value);
+  slider.value = pendingValue;
+  display.textContent = pendingValue;
+  if (pendingValue !== currentValue) {
+    button.disabled = false;
+    button.className = 'btn btn-sm btn-primary';
+    button.innerHTML = '<i class="bi bi-send"></i> Применить';
+  }
+};
+
+slider.onchange = sendValue;
+input.onchange = sendValue;
+
+async function sendValue() {
+  const value = pendingValue;
+  button.disabled = true;
+  button.className = 'btn btn-sm btn-secondary';
+  button.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+  errorDiv.classList.add('d-none');
+  
+  try {
+    const response = await fetch(\`/api/channels/\${CHANNEL_ID}/control\`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ field_name: TARGET_FIELD, value: value })
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Ошибка');
+    }
+    
+    const data = await response.json();
+    currentValue = value;
+    button.className = 'btn btn-sm btn-success';
+    button.innerHTML = '<i class="bi bi-check"></i> Готово';
+    
+    if (data.value !== value) {
+      updateUI(data.value);
+      currentValue = data.value;
+    }
+  } catch (error) {
+    errorDiv.textContent = error.message;
+    errorDiv.classList.remove('d-none');
+    button.className = 'btn btn-sm btn-danger';
+    button.innerHTML = '<i class="bi bi-x"></i> Ошибка';
+    setTimeout(() => {
+      button.disabled = false;
+      button.className = 'btn btn-sm btn-primary';
+      button.innerHTML = '<i class="bi bi-arrow-repeat"></i> Повторить';
+    }, 2000);
+  }
+}
+
+async function fetchCurrentValue() {
+  try {
+    const response = await fetch(
+      \`/api/channels/\${CHANNEL_ID}/fields/\${TARGET_FIELD}\`,
+      { credentials: 'include' }
+    );
+    if (response.ok) {
+      const data = await response.json();
+      if (data.value !== null) {
+        currentValue = data.value;
+        pendingValue = data.value;
+        updateUI(data.value);
+      }
+    }
+  } catch (error) {
+    console.error('Fetch error:', error);
+  }
+}
+
+fetchCurrentValue();
+setInterval(fetchCurrentValue, 10000);`;
+    
+    // ИСПРАВЛЕНИЕ: Правильный доступ к элементам формы
+    const form = document.getElementById('widgetForm');
+    if (!form) {
+        alert('❌ Ошибка: форма не найдена! Обновите страницу и попробуйте снова.');
+        console.error('widgetForm not found');
+        return;
+    }
+    
+    // Переключить тип виджета на HTML
+    const widgetTypeSelect = form.querySelector('[name="widget_type"]');
+    if (widgetTypeSelect) {
+        widgetTypeSelect.value = 'html';
+        toggleWidgetType();  // Показать HTML секцию
+    }
+    
+    // Задержка для рендеринга элементов
+    setTimeout(() => {
+        try {
+            const nameInput = form.querySelector('[name="name"]');
+            const widthSelect = form.querySelector('[name="width"]');
+            const htmlTextarea = form.querySelector('[name="html_code"]');
+            const cssTextarea = form.querySelector('[name="css_code"]');
+            const jsTextarea = form.querySelector('[name="js_code"]');
+            
+            if (!nameInput || !widthSelect || !htmlTextarea || !cssTextarea || !jsTextarea) {
+                alert('❌ Ошибка: поля формы не найдены!\n\nПопробуйте:\n1. Закрыть модальное окно\n2. Открыть снова\n3. Выбрать Custom HTML/JS\n4. Кликнуть на Ползунок');
+                console.error('Form fields not found:', {nameInput, widthSelect, htmlTextarea, cssTextarea, jsTextarea});
+                return;
+            }
+            
+            nameInput.value = name;
+            widthSelect.value = '6';
+            htmlTextarea.value = html;
+            cssTextarea.value = css;
+            jsTextarea.value = js;
+            
+            // Прокрутить к HTML коду
+            htmlTextarea.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            
+            alert('✅ Виджет-ползунок готов!\n\nПрокрутите вниз и нажмите "Создать виджет"');
+            
+        } catch (error) {
+            alert('❌ Ошибка при вставке кода: ' + error.message);
+            console.error('Error inserting widget code:', error);
+        }
+    }, 300);  // Задержка 300мс для рендеринга
+}
+
+function createButtonWidget() {
+    const name = prompt('Название виджета:', 'Кнопка управления');
+    if (!name) return;
+    
+    const field = prompt('Целевое поле (field1-field8):', 'field1');
+    if (!field || !field.match(/^field[1-8]$/)) {
+        alert('❌ Неверное поле! Используйте: field1, field2, ..., field8');
+        return;
+    }
+    
+    const widgetId = 'button_' + Date.now();
+    
+    const html = `<div class="button-widget">
+  <button id="${widgetId}" class="btn btn-lg btn-primary w-100">
+    <i class="bi bi-power"></i> Включить
+  </button>
+  <div id="${widgetId}_status" class="text-center mt-2">
+    <small class="text-muted">Состояние: <span id="${widgetId}_state">ВЫКЛ</span></small>
+  </div>
+</div>`;
+    
+    const css = `.button-widget { padding: 20px; text-align: center; }`;
+    
+    const js = `const TARGET_FIELD = '${field}';
+const button = document.getElementById('${widgetId}');
+const stateSpan = document.getElementById('${widgetId}_state');
+let isOn = false;
+
+button.onclick = async () => {
+  const newValue = isOn ? 0 : 1;
+  button.disabled = true;
+  
+  try {
+    const response = await fetch(\`/api/channels/\${CHANNEL_ID}/control\`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ field_name: TARGET_FIELD, value: newValue })
+    });
+    
+    if (response.ok) {
+      isOn = !isOn;
+      button.className = isOn ? 'btn btn-lg btn-success w-100' : 'btn btn-lg btn-primary w-100';
+      button.innerHTML = isOn ? '<i class="bi bi-power"></i> Выключить' : '<i class="bi bi-power"></i> Включить';
+      stateSpan.textContent = isOn ? 'ВКЛ' : 'ВЫКЛ';
+    }
+  } catch (error) {
+    alert('Ошибка: ' + error.message);
+  }
+  button.disabled = false;
+};`;
+    
+    // ИСПРАВЛЕНИЕ: Правильный доступ к элементам формы
+    const form = document.getElementById('widgetForm');
+    if (!form) {
+        alert('❌ Ошибка: форма не найдена!');
+        return;
+    }
+    
+    const widgetTypeSelect = form.querySelector('[name="widget_type"]');
+    if (widgetTypeSelect) {
+        widgetTypeSelect.value = 'html';
+        toggleWidgetType();
+    }
+    
+    setTimeout(() => {
+        try {
+            const nameInput = form.querySelector('[name="name"]');
+            const widthSelect = form.querySelector('[name="width"]');
+            const htmlTextarea = form.querySelector('[name="html_code"]');
+            const cssTextarea = form.querySelector('[name="css_code"]');
+            const jsTextarea = form.querySelector('[name="js_code"]');
+            
+            if (!htmlTextarea || !cssTextarea || !jsTextarea) {
+                alert('❌ Поля формы не найдены! Попробуйте еще раз.');
+                return;
+            }
+            
+            nameInput.value = name;
+            widthSelect.value = '6';
+            htmlTextarea.value = html;
+            cssTextarea.value = css;
+            jsTextarea.value = js;
+            
+            htmlTextarea.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            alert('✅ Виджет-кнопка готов! Нажмите "Создать виджет" ниже');
+            
+        } catch (error) {
+            alert('❌ Ошибка: ' + error.message);
+            console.error('Error:', error);
+        }
+    }, 300);
+}
+
+function createToggleWidget() {
+    const name = prompt('Название виджета:', 'Переключатель');
+    if (!name) return;
+    
+    const field = prompt('Целевое поле (field1-field8):', 'field1');
+    if (!field || !field.match(/^field[1-8]$/)) {
+        alert('❌ Неверное поле! Используйте: field1, field2, ..., field8');
+        return;
+    }
+    
+    const widgetId = 'toggle_' + Date.now();
+    
+    const html = `<div class="toggle-widget">
+  <label class="form-label fw-bold">Управление</label>
+  <div class="form-check form-switch">
+    <input class="form-check-input" type="checkbox" id="${widgetId}" style="width: 60px; height: 30px;">
+    <label class="form-check-label ms-2" for="${widgetId}" id="${widgetId}_label">ВЫКЛ</label>
+  </div>
+</div>`;
+    
+    const css = `.toggle-widget { padding: 20px; }
+.form-check-input { cursor: pointer; }`;
+    
+    const js = `const TARGET_FIELD = '${field}';
+const toggle = document.getElementById('${widgetId}');
+const label = document.getElementById('${widgetId}_label');
+
+toggle.onchange = async () => {
+  const value = toggle.checked ? 1 : 0;
+  toggle.disabled = true;
+  
+  try {
+    const response = await fetch(\`/api/channels/\${CHANNEL_ID}/control\`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ field_name: TARGET_FIELD, value: value })
+    });
+    
+    if (response.ok) {
+      label.textContent = toggle.checked ? 'ВКЛ' : 'ВЫКЛ';
+      label.className = toggle.checked ? 'form-check-label ms-2 text-success fw-bold' : 'form-check-label ms-2 text-muted';
+    } else {
+      toggle.checked = !toggle.checked;
+      alert('Ошибка!');
+    }
+  } catch (error) {
+    toggle.checked = !toggle.checked;
+    alert('Ошибка: ' + error.message);
+  }
+  toggle.disabled = false;
+};`;
+    
+    // ИСПРАВЛЕНИЕ: Правильный доступ к элементам формы
+    const form = document.getElementById('widgetForm');
+    if (!form) {
+        alert('❌ Ошибка: форма не найдена!');
+        return;
+    }
+    
+    const widgetTypeSelect = form.querySelector('[name="widget_type"]');
+    if (widgetTypeSelect) {
+        widgetTypeSelect.value = 'html';
+        toggleWidgetType();
+    }
+    
+    setTimeout(() => {
+        try {
+            const nameInput = form.querySelector('[name="name"]');
+            const widthSelect = form.querySelector('[name="width"]');
+            const htmlTextarea = form.querySelector('[name="html_code"]');
+            const cssTextarea = form.querySelector('[name="css_code"]');
+            const jsTextarea = form.querySelector('[name="js_code"]');
+            
+            if (!htmlTextarea || !cssTextarea || !jsTextarea) {
+                alert('❌ Поля формы не найдены! Попробуйте еще раз.');
+                return;
+            }
+            
+            nameInput.value = name;
+            widthSelect.value = '6';
+            htmlTextarea.value = html;
+            cssTextarea.value = css;
+            jsTextarea.value = js;
+            
+            htmlTextarea.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            alert('✅ Виджет-переключатель готов! Нажмите "Создать виджет" ниже');
+            
+        } catch (error) {
+            alert('❌ Ошибка: ' + error.message);
+            console.error('Error:', error);
+        }
+    }, 300);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    toggleWidgetType();
+    if (window.AIWidgetManager) {
+        window.AIWidgetManager.init({
+            mode: 'create',
+            channelId: {{ channel.id }},
+            formId: 'widgetForm',
+        });
+    }
+});
+</script>
+{% endblock %}

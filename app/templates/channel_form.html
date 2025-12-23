@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block title %}{{ 'Создать' if not channel else 'Редактировать' }} канал - {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-6 mx-auto">
+        <h1 class="mb-4">
+            <i class="bi bi-diagram-3"></i> 
+            {{ 'Создать новый канал' if not channel else 'Редактировать канал' }}
+        </h1>
+
+        <div class="card">
+            <div class="card-body">
+                <form method="POST">
+                    <div class="mb-3">
+                        <label for="name" class="form-label">Название канала *</label>
+                        <input type="text" class="form-control" id="name" name="name" 
+                               value="{{ channel.name if channel else '' }}" required>
+                        <small class="form-text text-muted">Краткое название для вашего канала</small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="description" class="form-label">Описание</label>
+                        <textarea class="form-control" id="description" name="description" rows="3">{{ channel.description if channel else '' }}</textarea>
+                        <small class="form-text text-muted">Подробное описание назначения канала</small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="timezone" class="form-label">Часовой пояс</label>
+                        <select class="form-select" id="timezone" name="timezone">
+                            <option value="UTC" {{ 'selected' if not channel or channel.timezone == 'UTC' else '' }}>UTC</option>
+                            <option value="Europe/Moscow" {{ 'selected' if channel and channel.timezone == 'Europe/Moscow' else '' }}>Europe/Moscow</option>
+                            <option value="Europe/London" {{ 'selected' if channel and channel.timezone == 'Europe/London' else '' }}>Europe/London</option>
+                            <option value="America/New_York" {{ 'selected' if channel and channel.timezone == 'America/New_York' else '' }}>America/New_York</option>
+                            <option value="Asia/Tokyo" {{ 'selected' if channel and channel.timezone == 'Asia/Tokyo' else '' }}>Asia/Tokyo</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="public" name="public" 
+                               {{ 'checked' if not channel or channel.public else '' }}>
+                        <label class="form-check-label" for="public">
+                            Публичный канал
+                        </label>
+                        <div class="form-text">Публичные каналы видны всем пользователям</div>
+                    </div>
+
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-circle"></i> {{ 'Создать' if not channel else 'Сохранить' }}
+                        </button>
+                        <a href="{{ '/channels' if not channel else '/channels/' + channel.id|string }}" class="btn btn-outline-secondary">
+                            <i class="bi bi-x-circle"></i> Отмена
+                        </a>
+                    </div>
+                </form>
+
+                {% if channel %}
+                <hr class="my-4">
+                <div class="text-center">
+                    <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#deleteModal">
+                        <i class="bi bi-trash"></i> Удалить канал
+                    </button>
+                </div>
+
+                <!-- Delete Modal -->
+                <div class="modal fade" id="deleteModal" tabindex="-1">
+                    <div class="modal-dialog">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title">Подтверждение удаления</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <p>Вы уверены, что хотите удалить канал <strong>{{ channel.name }}</strong>?</p>
+                                <p class="text-danger">Все данные канала будут безвозвратно удалены!</p>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                                <form method="POST" action="/channels/{{ channel.id }}/delete" style="display: inline;">
+                                    <button type="submit" class="btn btn-danger">Удалить</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if channel %}
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5 class="mb-0">Информация о канале</h5>
+            </div>
+            <div class="card-body">
+                <ul class="list-unstyled">
+                    <li><strong>ID:</strong> {{ channel.id }}</li>
+                    <li><strong>Создан:</strong> {{ channel.created_at.strftime('%d.%m.%Y %H:%M') }}</li>
+                    <li><strong>Записей:</strong> {{ channel.last_entry_id }}</li>
+                </ul>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+

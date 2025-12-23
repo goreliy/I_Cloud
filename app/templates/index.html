@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+
+{% block title %}Главная - {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8 mx-auto">
+        <div class="text-center mb-5">
+            <h1 class="display-4">
+                <i class="bi bi-lightning-charge-fill text-primary"></i>
+                {{ app_name }}
+            </h1>
+            <p class="lead">Облачная платформа для сбора и анализа данных IoT устройств</p>
+        </div>
+
+        <div class="row g-4 mb-5">
+            <div class="col-md-4">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <i class="bi bi-diagram-3 display-4 text-primary"></i>
+                        <h5 class="card-title mt-3">Каналы данных</h5>
+                        <p class="card-text">До 8 полей данных на канал + GPS координаты</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <i class="bi bi-graph-up display-4 text-success"></i>
+                        <h5 class="card-title mt-3">Визуализация</h5>
+                        <p class="card-text">Графики в реальном времени с агрегацией</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <i class="bi bi-file-earmark-code display-4 text-info"></i>
+                        <h5 class="card-title mt-3">REST API</h5>
+                        <p class="card-text">Удобный REST API для интеграции</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">Быстрый старт</h5>
+            </div>
+            <div class="card-body">
+                <h6>1. Создайте канал</h6>
+                <p>Перейдите в раздел <a href="/channels">Каналы</a> и создайте новый канал для вашего устройства.</p>
+                
+                <h6>2. Получите API ключи</h6>
+                <p>После создания канала вы получите ключи для записи и чтения данных.</p>
+                
+                <h6>3. Отправляйте данные</h6>
+                <pre class="bg-light p-3"><code>curl "http://{{ request.url.hostname }}:{{ request.url.port }}/update?api_key=YOUR_WRITE_KEY&field1=25.5"</code></pre>
+                
+                <h6>4. Просматривайте результаты</h6>
+                <p>Данные автоматически отобразятся на графиках вашего канала.</p>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Возможности</h5>
+            </div>
+            <div class="card-body">
+                <ul>
+                    <li><strong>8 полей данных</strong> на каждый канал</li>
+                    <li><strong>GPS координаты</strong> и высота</li>
+                    <li><strong>Обработка данных</strong>: агрегация, среднее, медиана, сумма</li>
+                    <li><strong>Экспорт</strong>: JSON, XML, CSV форматы</li>
+                    <li><strong>Графики</strong>: интерактивная визуализация</li>
+                    <li><strong>API ключи</strong>: раздельные для чтения и записи</li>
+                    {% if not auth_enabled %}
+                    <li><strong>Открытый доступ</strong>: аутентификация отключена</li>
+                    {% endif %}
+                </ul>
+            </div>
+        </div>
+
+        <div class="text-center mt-4">
+            <a href="/channels" class="btn btn-primary btn-lg">
+                <i class="bi bi-arrow-right-circle"></i> Перейти к каналам
+            </a>
+            <a href="/docs" class="btn btn-outline-secondary btn-lg ms-2">
+                <i class="bi bi-book"></i> API Документация
+            </a>
+        </div>
+
+        <!-- Отладочная информация -->
+        <div class="card mt-4 border-info">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0"><i class="bi bi-bug"></i> Отладочная информация</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <strong>ROOT_PATH:</strong> 
+                        {% if root_path %}
+                            <code class="text-success">{{ root_path }}</code>
+                        {% else %}
+                            <code class="text-danger">НЕ УСТАНОВЛЕН!</code>
+                        {% endif %}
+                    </div>
+                    <div class="col-md-6">
+                        <strong>Текущий путь:</strong> <code>{{ request.url.path }}</code>
+                    </div>
+                    <div class="col-md-6 mt-2">
+                        <strong>Base URL:</strong> <code>{{ base_url }}</code>
+                    </div>
+                    <div class="col-md-6 mt-2">
+                        <strong>Полный URL:</strong> <code>{{ current_url }}</code>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

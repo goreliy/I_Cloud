@@ -1,0 +1,32 @@
+fastapi==0.104.1
+# На armv7 не ставим extras (uvloop/httptools) — сборка падает. Чистый uvicorn без C-расширений.
+uvicorn==0.24.0
+sqlalchemy==2.0.23
+alembic==1.12.1
+# Если используете PostgreSQL, раскомментируйте следующую строку. На armv7 часто нет подходящих колёс,
+# установка потребует dev-пакетов и много памяти. По умолчанию проект работает на SQLite.
+# psycopg2-binary==2.9.9
+aiosqlite==0.19.0
+pydantic==2.5.0
+pydantic-settings==2.1.0
+email-validator>=2.1.0
+python-jose[cryptography]==3.3.0
+bcrypt>=4.0.0
+python-multipart==0.0.6
+jinja2==3.1.2
+python-dotenv==1.0.0
+pytest==7.4.3
+httpx==0.25.2
+
+# Image processing
+Pillow==10.1.0
+
+# System monitoring
+psutil==5.9.6
+
+# Safe expression evaluation
+asteval==0.9.31
+
+# Stress testing
+aiohttp==3.9.1
+

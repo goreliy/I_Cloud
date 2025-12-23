@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+
+{% block title %}ИИ сервисы - {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+  <div class="col-12">
+    <h1><i class="bi bi-robot"></i> ИИ сервисы</h1>
+    <nav aria-label="breadcrumb">
+      <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="/admin">Админ</a></li>
+        <li class="breadcrumb-item active">ИИ сервисы</li>
+      </ol>
+    </nav>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-gear"></i> Управление сервисами</span>
+    <div class="btn-group">
+      <button id="btn-add-service" class="btn btn-primary btn-sm"><i class="bi bi-plus"></i> Добавить</button>
+      <button id="btn-add-typical" class="btn btn-outline-secondary btn-sm"><i class="bi bi-stars"></i> Добавить типовые</button>
+      <button id="btn-refresh" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-repeat"></i></button>
+    </div>
+  </div>
+  <div class="card-body">
+    <div id="services-list" class="row g-3"></div>
+  </div>
+</div>
+
+<!-- Modal -->
+<div class="modal fade" id="serviceModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Сервис</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="serviceForm">
+          <input type="hidden" id="service-id">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">Название</label>
+              <input class="form-control" id="service-name" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Alias</label>
+              <input class="form-control" id="service-alias" required>
+            </div>
+            <div class="col-12">
+              <label class="form-label">URL</label>
+              <input class="form-control" id="service-url" placeholder="https://chat.deepseek.com" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Порядок</label>
+              <input type="number" class="form-control" id="service-order" value="0">
+            </div>
+            <div class="col-md-4 d-flex align-items-end">
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="service-enabled" checked>
+                <label class="form-check-label" for="service-enabled">Включен</label>
+              </div>
+            </div>
+          </div>
+
+          <hr>
+          <div class="mb-2 small text-muted">Шаблоны предпромптов по умолчанию</div>
+          <div class="row g-3">
+            <div class="col-12">
+              <label class="form-label">Общий</label>
+              <textarea class="form-control font-monospace" id="prompt-common" rows="4"></textarea>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">HTML</label>
+              <textarea class="form-control font-monospace" id="prompt-html" rows="6"></textarea>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">CSS</label>
+              <textarea class="form-control font-monospace" id="prompt-css" rows="6"></textarea>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">JS</label>
+              <textarea class="form-control font-monospace" id="prompt-js" rows="6"></textarea>
+            </div>
+            <div class="col-12">
+              <label class="form-label">Refine</label>
+              <textarea class="form-control font-monospace" id="prompt-refine" rows="4"></textarea>
+            </div>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+        <button type="button" class="btn btn-primary" id="service-save">Сохранить</button>
+      </div>
+    </div>
+  </div>
+ </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+let services = [];
+let editing = null;
+
+async function loadServices() {
+  const r = await fetch('/api/ai-services');
+  services = await r.json();
+  renderServices();
+}
+
+function renderServices() {
+  const root = document.getElementById('services-list');
+  root.innerHTML = '';
+  if (!services.length) {
+    root.innerHTML = '<div class="text-muted">Нет сервисов. Нажмите "Добавить типовые".</div>';
+    return;
+  }
+  services.forEach(s => {
+    const col = document.createElement('div');
+    col.className = 'col-md-6';
+    col.innerHTML = `
+      <div class="card h-100">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start">
+            <div>
+              <h5 class="mb-1">${s.name} <span class="badge ${s.is_enabled ? 'bg-success' : 'bg-secondary'}">${s.is_enabled ? 'ON' : 'OFF'}</span></h5>
+              <div class="small text-muted">${s.url}</div>
+              <div class="small">alias: <code>${s.alias}</code></div>
+            </div>
+            <div class="btn-group btn-group-sm">
+              <button class="btn btn-outline-primary" data-action="edit" data-id="${s.id}"><i class="bi bi-pencil"></i></button>
+              <button class="btn btn-outline-danger" data-action="delete" data-id="${s.id}"><i class="bi bi-trash"></i></button>
+            </div>
+          </div>
+        </div>
+      </div>`;
+    root.appendChild(col);
+  });
+}
+
+function openModal(data) {
+  editing = data || null;
+  document.getElementById('service-id').value = data?.id || '';
+  document.getElementById('service-name').value = data?.name || '';
+  document.getElementById('service-alias').value = data?.alias || '';
+  document.getElementById('service-url').value = data?.url || '';
+  document.getElementById('service-order').value = data?.display_order ?? 0;
+  document.getElementById('service-enabled').checked = (data?.is_enabled ?? true);
+  document.getElementById('prompt-common').value = data?.default_prompt_common || '';
+  document.getElementById('prompt-html').value = data?.default_prompt_html || '';
+  document.getElementById('prompt-css').value = data?.default_prompt_css || '';
+  document.getElementById('prompt-js').value = data?.default_prompt_js || '';
+  document.getElementById('prompt-refine').value = data?.default_prompt_refine || '';
+
+  const modal = new bootstrap.Modal(document.getElementById('serviceModal'));
+  modal.show();
+}
+
+async function saveModal() {
+  const id = document.getElementById('service-id').value;
+  const payload = {
+    name: document.getElementById('service-name').value,
+    alias: document.getElementById('service-alias').value,
+    url: document.getElementById('service-url').value,
+    display_order: parseInt(document.getElementById('service-order').value || '0', 10),
+    is_enabled: document.getElementById('service-enabled').checked,
+    default_prompt_common: document.getElementById('prompt-common').value,
+    default_prompt_html: document.getElementById('prompt-html').value,
+    default_prompt_css: document.getElementById('prompt-css').value,
+    default_prompt_js: document.getElementById('prompt-js').value,
+    default_prompt_refine: document.getElementById('prompt-refine').value,
+  };
+
+  const method = id ? 'PUT' : 'POST';
+  const url = id ? `/api/ai-services/${id}` : '/api/ai-services';
+  const r = await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+  if (!r.ok) { alert('Ошибка сохранения'); return; }
+  await loadServices();
+  bootstrap.Modal.getInstance(document.getElementById('serviceModal')).hide();
+}
+
+async function deleteService(id) {
+  if (!confirm('Удалить сервис?')) return;
+  const r = await fetch(`/api/ai-services/${id}`, { method:'DELETE' });
+  if (!r.ok) { alert('Ошибка удаления'); return; }
+  await loadServices();
+}
+
+async function addTypical() {
+  const typical = [
+    { name:'DeepSeek', alias:'deepseek', url:'https://chat.deepseek.com' },
+    { name:'Qwen', alias:'qwen', url:'https://chat.qwen.ai/' },
+    { name:'ChatGPT', alias:'chatgpt', url:'https://chat.openai.com' },
+  ];
+  for (const t of typical) {
+    const exists = services.find(s => s.alias === t.alias);
+    if (exists) continue;
+    const payload = { ...t, is_enabled:true, display_order:0 };
+    await fetch('/api/ai-services', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+  }
+  await loadServices();
+}
+
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-action]');
+  if (!btn) return;
+  const id = btn.getAttribute('data-id');
+  if (btn.dataset.action === 'edit') {
+    const item = services.find(s => String(s.id) === String(id));
+    if (item) openModal(item);
+  } else if (btn.dataset.action === 'delete') {
+    deleteService(id);
+  }
+});
+
+document.getElementById('btn-add-service').onclick = () => openModal();
+document.getElementById('btn-add-typical').onclick = addTypical;
+document.getElementById('btn-refresh').onclick = loadServices;
+document.getElementById('service-save').onclick = saveModal;
+
+loadServices();
+</script>
+{% endblock %}
+

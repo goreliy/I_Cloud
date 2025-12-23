@@ -1,0 +1,513 @@
+{% extends "base.html" %}
+
+{% block title %}Архивация данных - {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+  <div class="col-12">
+    <h1><i class="bi bi-archive"></i> Архивация данных</h1>
+    <nav aria-label="breadcrumb">
+      <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="/admin">Админ</a></li>
+        <li class="breadcrumb-item active">Архивация</li>
+      </ol>
+    </nav>
+  </div>
+</div>
+
+<div id="archive-alert" class="alert d-none" role="alert"></div>
+
+<div class="card mb-4">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span>Настройки архива</span>
+    <div class="btn-group btn-group-sm">
+      <button class="btn btn-outline-secondary" id="btn-refresh"><i class="bi bi-arrow-repeat"></i></button>
+      <button class="btn btn-primary" id="btn-test"><i class="bi bi-plug"></i> Проверить подключение</button>
+      <button class="btn btn-success" id="btn-save"><i class="bi bi-save"></i> Сохранить</button>
+    </div>
+  </div>
+  <div class="card-body">
+    <form id="archiveForm">
+      <div class="row mb-3">
+        <div class="col-md-4">
+          <label class="form-label fw-semibold">Статус</label>
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="enabled">
+            <label class="form-check-label" for="enabled">Включить автоматическую архивацию</label>
+          </div>
+        </div>
+        <div class="col-md-8">
+          <label class="form-label fw-semibold">Бэкенд</label>
+          <div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="backend_type" id="backend-sqlite" value="sqlite">
+              <label class="form-check-label" for="backend-sqlite">SQLite файл</label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="backend_type" id="backend-postgres" value="postgres">
+              <label class="form-check-label" for="backend-postgres">PostgreSQL</label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="sqlite-settings" class="border rounded p-3 mb-3">
+        <h6 class="fw-bold">SQLite</h6>
+        <label class="form-label">Путь к файлу</label>
+        <input class="form-control" id="sqlite_file_path" placeholder="archive/archive.db">
+        <small class="text-muted">Файл будет создан автоматически, если не существует.</small>
+      </div>
+
+      <div id="postgres-settings" class="border rounded p-3 mb-3 d-none">
+        <h6 class="fw-bold">PostgreSQL</h6>
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">Host</label>
+            <input class="form-control" id="pg_host" placeholder="localhost">
+          </div>
+          <div class="col-md-2">
+            <label class="form-label">Port</label>
+            <input type="number" class="form-control" id="pg_port" value="5432">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Database</label>
+            <input class="form-control" id="pg_db" placeholder="archive_db">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">User</label>
+            <input class="form-control" id="pg_user" placeholder="postgres">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Password</label>
+            <input type="password" class="form-control" id="pg_password" placeholder="••••••">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Schema</label>
+            <input class="form-control" id="pg_schema" placeholder="public">
+          </div>
+          <div class="col-md-12">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="pg_ssl">
+              <label class="form-check-label" for="pg_ssl">Использовать SSL (sslmode=require)</label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label">Retention (дней)</label>
+          <input type="number" class="form-control" id="retention_days" min="1" max="3650" value="30">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Интервал (сек)</label>
+          <input type="number" class="form-control" id="schedule_interval_seconds" min="300" value="3600">
+          <small class="text-muted">Минимум 300 секунд.</small>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Cron (опционально)</label>
+          <input class="form-control" id="schedule_cron" placeholder="0 3 * * *">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label fw-semibold">Удалять из основной БД</label>
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="copy_then_delete" checked>
+            <label class="form-check-label" for="copy_then_delete">После копирования удалять содержимое из основной базы</label>
+          </div>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span>Статус</span>
+    <div class="btn-group btn-group-sm">
+      <button class="btn btn-outline-primary" id="btn-run"><i class="bi bi-play"></i> Запустить сейчас</button>
+    </div>
+  </div>
+  <div class="card-body">
+    <dl class="row mb-0">
+      <dt class="col-sm-3">Планировщик</dt>
+      <dd class="col-sm-9" id="status-scheduler">—</dd>
+      <dt class="col-sm-3">Последний запуск</dt>
+      <dd class="col-sm-9" id="status-last-run">—</dd>
+      <dt class="col-sm-3">Статус</dt>
+      <dd class="col-sm-9" id="status-last-status">—</dd>
+      <dt class="col-sm-3">Перемещено записей</dt>
+      <dd class="col-sm-9" id="status-last-processed">—</dd>
+      <dt class="col-sm-3">Ошибка</dt>
+      <dd class="col-sm-9" id="status-last-error">—</dd>
+    </dl>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span>Миграция данных</span>
+    <div class="btn-group btn-group-sm">
+      <button class="btn btn-outline-secondary" id="btn-migrate"><i class="bi bi-arrow-left-right"></i> Начать миграцию</button>
+    </div>
+  </div>
+  <div class="card-body">
+    <div class="row g-4">
+      <div class="col-md-6">
+        <h6 class="fw-bold">Источник</h6>
+        <div class="mb-2">
+          <label class="form-label fw-semibold">Бэкенд</label>
+          <div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="mig_source_backend_type" id="mig-source-sqlite" value="sqlite" checked>
+              <label class="form-check-label" for="mig-source-sqlite">SQLite</label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="mig_source_backend_type" id="mig-source-postgres" value="postgres">
+              <label class="form-check-label" for="mig-source-postgres">PostgreSQL</label>
+            </div>
+          </div>
+        </div>
+        <div id="mig-source-sqlite-card" class="border rounded p-3 mb-3">
+          <label class="form-label">Путь к файлу</label>
+          <input class="form-control" id="mig_source_sqlite_file_path" placeholder="archive/archive.db">
+        </div>
+        <div id="mig-source-postgres-card" class="border rounded p-3 mb-3 d-none">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">Host</label>
+              <input class="form-control" id="mig_source_pg_host" placeholder="localhost">
+            </div>
+            <div class="col-md-2">
+              <label class="form-label">Port</label>
+              <input type="number" class="form-control" id="mig_source_pg_port" value="5432">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Database</label>
+              <input class="form-control" id="mig_source_pg_db" placeholder="archive_db">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">User</label>
+              <input class="form-control" id="mig_source_pg_user" placeholder="postgres">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Password</label>
+              <input type="password" class="form-control" id="mig_source_pg_password" placeholder="••••••">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Schema</label>
+              <input class="form-control" id="mig_source_pg_schema" placeholder="public">
+            </div>
+            <div class="col-md-12">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="mig_source_pg_ssl">
+                <label class="form-check-label" for="mig_source_pg_ssl">SSL (sslmode=require)</label>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <h6 class="fw-bold">Назначение</h6>
+        <div class="mb-2">
+          <label class="form-label fw-semibold">Бэкенд</label>
+          <div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="mig_target_backend_type" id="mig-target-sqlite" value="sqlite" checked>
+              <label class="form-check-label" for="mig-target-sqlite">SQLite</label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="mig_target_backend_type" id="mig-target-postgres" value="postgres">
+              <label class="form-check-label" for="mig-target-postgres">PostgreSQL</label>
+            </div>
+          </div>
+        </div>
+        <div id="mig-target-sqlite-card" class="border rounded p-3 mb-3">
+          <label class="form-label">Путь к файлу</label>
+          <input class="form-control" id="mig_target_sqlite_file_path" placeholder="archive/archive.db">
+        </div>
+        <div id="mig-target-postgres-card" class="border rounded p-3 mb-3 d-none">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">Host</label>
+              <input class="form-control" id="mig_target_pg_host" placeholder="localhost">
+            </div>
+            <div class="col-md-2">
+              <label class="form-label">Port</label>
+              <input type="number" class="form-control" id="mig_target_pg_port" value="5432">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Database</label>
+              <input class="form-control" id="mig_target_pg_db" placeholder="archive_db">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">User</label>
+              <input class="form-control" id="mig_target_pg_user" placeholder="postgres">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Password</label>
+              <input type="password" class="form-control" id="mig_target_pg_password" placeholder="••••••">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Schema</label>
+              <input class="form-control" id="mig_target_pg_schema" placeholder="public">
+            </div>
+            <div class="col-md-12">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="mig_target_pg_ssl">
+                <label class="form-check-label" for="mig_target_pg_ssl">SSL (sslmode=require)</label>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="migrate-result" class="mt-3"></div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const alertBox = document.getElementById('archive-alert');
+
+function formatError(err) {
+  try {
+    if (!err) return 'Неизвестная ошибка';
+    if (typeof err === 'string') return err;
+    if (Array.isArray(err)) {
+      return err.map(e => e.msg || e.message || JSON.stringify(e)).join('\n');
+    }
+    if (typeof err === 'object') {
+      if (err.detail) return formatError(err.detail);
+      return JSON.stringify(err);
+    }
+    return String(err);
+  } catch (_) {
+    return 'Ошибка формата ответа';
+  }
+}
+
+function showAlert(kind, message) {
+  alertBox.className = `alert alert-${kind}`;
+  alertBox.textContent = message;
+  alertBox.classList.remove('d-none');
+}
+
+function hideAlert() {
+  alertBox.classList.add('d-none');
+}
+
+function formToPayload() {
+  const backend = document.querySelector('input[name="backend_type"]:checked')?.value || 'sqlite';
+  const payload = {
+    enabled: document.getElementById('enabled').checked,
+    backend_type: backend,
+    sqlite_file_path: document.getElementById('sqlite_file_path').value,
+    pg_host: document.getElementById('pg_host').value,
+    pg_port: Number(document.getElementById('pg_port').value || 5432),
+    pg_db: document.getElementById('pg_db').value,
+    pg_user: document.getElementById('pg_user').value,
+    pg_password: document.getElementById('pg_password').value || undefined,
+    pg_schema: document.getElementById('pg_schema').value,
+    pg_ssl: document.getElementById('pg_ssl').checked,
+    retention_days: Number(document.getElementById('retention_days').value || 30),
+    schedule_interval_seconds: Number(document.getElementById('schedule_interval_seconds').value || 3600),
+    schedule_cron: document.getElementById('schedule_cron').value || null,
+    copy_then_delete: document.getElementById('copy_then_delete').checked,
+  };
+  if (backend === 'sqlite' && (!payload.sqlite_file_path || !payload.sqlite_file_path.trim())) {
+    payload.sqlite_file_path = 'archive/archive.db';
+  }
+  return payload;
+}
+
+function applyPayload(data) {
+  document.getElementById('enabled').checked = data.enabled;
+  if (data.backend_type === 'postgres') {
+    document.getElementById('backend-postgres').checked = true;
+  } else {
+    document.getElementById('backend-sqlite').checked = true;
+  }
+  document.getElementById('sqlite_file_path').value = data.sqlite_file_path || '';
+  document.getElementById('pg_host').value = data.pg_host || '';
+  document.getElementById('pg_port').value = data.pg_port || 5432;
+  document.getElementById('pg_db').value = data.pg_db || '';
+  document.getElementById('pg_user').value = data.pg_user || '';
+  document.getElementById('pg_schema').value = data.pg_schema || '';
+  document.getElementById('pg_ssl').checked = !!data.pg_ssl;
+  document.getElementById('retention_days').value = data.retention_days || 30;
+  document.getElementById('schedule_interval_seconds').value = data.schedule_interval_seconds || 3600;
+  document.getElementById('schedule_cron').value = data.schedule_cron || '';
+  document.getElementById('copy_then_delete').checked = !!data.copy_then_delete;
+  toggleBackendViews(data.backend_type || 'sqlite');
+}
+
+function toggleMigViews(prefix, backend) {
+  const sqliteCard = document.getElementById(`${prefix}-sqlite-card`);
+  const pgCard = document.getElementById(`${prefix}-postgres-card`);
+  if (backend === 'postgres') {
+    sqliteCard.classList.add('d-none');
+    pgCard.classList.remove('d-none');
+  } else {
+    sqliteCard.classList.remove('d-none');
+    pgCard.classList.add('d-none');
+  }
+}
+
+function buildMigPayload(prefix) {
+  const backend = document.querySelector(`input[name="${prefix}_backend_type"]:checked`)?.value || 'sqlite';
+  const common = {
+    enabled: false,
+    backend_type: backend,
+    retention_days: Number(document.getElementById('retention_days').value || 30),
+    schedule_interval_seconds: Number(document.getElementById('schedule_interval_seconds').value || 3600),
+    schedule_cron: null,
+    copy_then_delete: false,
+  };
+  if (backend === 'sqlite') {
+    return {
+      ...common,
+      sqlite_file_path: document.getElementById(`${prefix}_sqlite_file_path`).value,
+    };
+  }
+  return {
+    ...common,
+    sqlite_file_path: null,
+    pg_host: document.getElementById(`${prefix}_pg_host`).value,
+    pg_port: Number(document.getElementById(`${prefix}_pg_port`).value || 5432),
+    pg_db: document.getElementById(`${prefix}_pg_db`).value,
+    pg_user: document.getElementById(`${prefix}_pg_user`).value,
+    pg_password: document.getElementById(`${prefix}_pg_password`).value || undefined,
+    pg_schema: document.getElementById(`${prefix}_pg_schema`).value,
+    pg_ssl: document.getElementById(`${prefix}_pg_ssl`).checked,
+  };
+}
+
+async function migrateNow() {
+  hideAlert();
+  const source = buildMigPayload('mig_source');
+  const target = buildMigPayload('mig_target');
+  const resultEl = document.getElementById('migrate-result');
+  resultEl.innerHTML = '<div class="alert alert-info">Идёт миграция... подождите</div>';
+  try {
+    const r = await fetch('/api/admin/archive/migrate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source_config: source, target_config: target }),
+    });
+    const data = await r.json();
+    if (!r.ok) {
+      resultEl.innerHTML = `<div class="alert alert-danger">Ошибка: ${data.detail || 'неизвестная'}</div>`;
+      return;
+    }
+    const errs = (data.errors && data.errors.length) ? `<pre class="small text-danger mb-0">${data.errors.join('\n')}</pre>` : '<span class="text-muted">нет</span>';
+    resultEl.innerHTML = `
+      <div class="alert alert-success">
+        <div><strong>Прочитано:</strong> ${data.total_read}</div>
+        <div><strong>Записано:</strong> ${data.total_written}</div>
+        <div><strong>Длительность:</strong> ${data.duration_seconds.toFixed(2)} c</div>
+        <div><strong>Ошибки:</strong> ${errs}</div>
+      </div>
+    `;
+  } catch (e) {
+    resultEl.innerHTML = `<div class="alert alert-danger">Ошибка: ${e.message}</div>`;
+  }
+}
+
+function toggleBackendViews(backend) {
+  const sqliteCard = document.getElementById('sqlite-settings');
+  const pgCard = document.getElementById('postgres-settings');
+  if (backend === 'postgres') {
+    sqliteCard.classList.add('d-none');
+    pgCard.classList.remove('d-none');
+  } else {
+    sqliteCard.classList.remove('d-none');
+    pgCard.classList.add('d-none');
+  }
+}
+
+async function loadConfig() {
+  hideAlert();
+  const r = await fetch('/api/admin/archive/config');
+  if (!r.ok) {
+    showAlert('danger', 'Не удалось загрузить конфигурацию');
+    return;
+  }
+  const data = await r.json();
+  applyPayload(data);
+  await loadStatus();
+}
+
+async function loadStatus() {
+  const r = await fetch('/api/admin/archive/status');
+  if (!r.ok) return;
+  const data = await r.json();
+  document.getElementById('status-scheduler').textContent = data.scheduler_running ? 'работает' : 'остановлен';
+  document.getElementById('status-last-run').textContent = data.last_run_at || '—';
+  document.getElementById('status-last-status').textContent = data.last_status || '—';
+  document.getElementById('status-last-processed').textContent = data.last_processed ?? '—';
+  document.getElementById('status-last-error').textContent = data.last_error || '—';
+}
+
+async function saveConfig() {
+  const payload = formToPayload();
+  const r = await fetch('/api/admin/archive/config', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    showAlert('danger', formatError(err));
+    return;
+  }
+  showAlert('success', 'Настройки сохранены');
+  await loadStatus();
+}
+
+async function testConnection() {
+  const payload = { config: formToPayload() };
+  const r = await fetch('/api/admin/archive/test', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    showAlert('danger', formatError(err));
+    return;
+  }
+  showAlert('success', 'Подключение успешно');
+}
+
+async function runNow() {
+  const r = await fetch('/api/admin/archive/run', { method: 'POST' });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    showAlert('danger', err.detail || 'Ошибка запуска архивации');
+    return;
+  }
+  const data = await r.json();
+  showAlert('success', `Перемещено записей: ${data.processed}, удалено: ${data.deleted}`);
+  await loadStatus();
+}
+
+document.getElementById('backend-sqlite').addEventListener('change', () => toggleBackendViews('sqlite'));
+document.getElementById('backend-postgres').addEventListener('change', () => toggleBackendViews('postgres'));
+document.getElementById('btn-refresh').addEventListener('click', loadConfig);
+document.getElementById('btn-save').addEventListener('click', saveConfig);
+document.getElementById('btn-test').addEventListener('click', testConnection);
+document.getElementById('btn-run').addEventListener('click', runNow);
+document.getElementById('btn-migrate').addEventListener('click', migrateNow);
+
+// Toggle migration views
+document.getElementById('mig-source-sqlite').addEventListener('change', () => toggleMigViews('mig-source', 'sqlite'));
+document.getElementById('mig-source-postgres').addEventListener('change', () => toggleMigViews('mig-source', 'postgres'));
+document.getElementById('mig-target-sqlite').addEventListener('change', () => toggleMigViews('mig-target', 'sqlite'));
+document.getElementById('mig-target-postgres').addEventListener('change', () => toggleMigViews('mig-target', 'postgres'));
+
+loadConfig();
+</script>
+{% endblock %}
+

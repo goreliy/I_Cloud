@@ -1,0 +1,27 @@
+{
+  "timestamp": "2025-10-31T09:56:59.157396",
+  "config": {
+    "base_url": "http://localhost:8000",
+    "channel_id": 2,
+    "workers": 20,
+    "target_rps": 100,
+    "duration": 30
+  },
+  "results": {
+    "total": 20,
+    "success": 0,
+    "failed": 20,
+    "actual_rps": 0.662892384013383,
+    "duration": 30.170809745788574,
+    "avg_latency_ms": 30021.36538028717,
+    "min_latency_ms": 30020.673751831055,
+    "max_latency_ms": 30021.99077606201,
+    "p50_latency_ms": 30021.594524383545,
+    "p95_latency_ms": 30021.99077606201,
+    "p99_latency_ms": 30021.99077606201,
+    "status_codes": {},
+    "errors": {
+      "TimeoutError": 20
+    }
+  }
+}

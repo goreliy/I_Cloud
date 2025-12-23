@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+
+{% block title %}API Запросы - Админ панель - {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1><i class="bi bi-activity"></i> Мониторинг API запросов</h1>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="/">Главная</a></li>
+                <li class="breadcrumb-item"><a href="/admin">Админ</a></li>
+                <li class="breadcrumb-item active">API Запросы</li>
+            </ol>
+        </nav>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-12">
+        <ul class="nav nav-tabs">
+            <li class="nav-item">
+                <a class="nav-link" href="/admin">
+                    <i class="bi bi-speedometer2"></i> Dashboard
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="/admin/users">
+                    <i class="bi bi-people"></i> Пользователи
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="/admin/channels">
+                    <i class="bi bi-diagram-3"></i> Каналы
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link active" href="/admin/requests">
+                    <i class="bi bi-activity"></i> API Запросы
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="/admin/stress-test">
+                    <i class="bi bi-lightning-charge"></i> Стресс-тест
+                </a>
+            </li>
+        </ul>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label">Метод</label>
+                <select class="form-select" id="method-select" onchange="loadRequests()">
+                    <option value="">Все</option>
+                    <option value="GET">GET</option>
+                    <option value="POST">POST</option>
+                    <option value="PUT">PUT</option>
+                    <option value="DELETE">DELETE</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Статус</label>
+                <select class="form-select" id="status-select" onchange="loadRequests()">
+                    <option value="">Все</option>
+                    <option value="200">200 (OK)</option>
+                    <option value="400">400 (Bad Request)</option>
+                    <option value="401">401 (Unauthorized)</option>
+                    <option value="404">404 (Not Found)</option>
+                    <option value="500">500 (Error)</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Лимит</label>
+                <select class="form-select" id="limit-select" onchange="loadRequests()">
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="500">500</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <button class="btn btn-primary w-100" onclick="loadRequests()">
+                    <i class="bi bi-arrow-clockwise"></i> Обновить
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Requests Table -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Последние запросы</h5>
+        <div>
+            <span class="badge bg-primary" id="total-count">--</span>
+            <button class="btn btn-sm btn-outline-secondary ms-2" onclick="toggleAutoRefresh()">
+                <i class="bi bi-arrow-repeat"></i> <span id="auto-refresh-text">Auto: OFF</span>
+            </button>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-sm table-hover">
+                <thead>
+                    <tr>
+                        <th>Время</th>
+                        <th>Метод</th>
+                        <th>Endpoint</th>
+                        <th>Статус</th>
+                        <th>Время ответа</th>
+                        <th>IP</th>
+                    </tr>
+                </thead>
+                <tbody id="requests-tbody">
+                    <tr>
+                        <td colspan="6" class="text-center">Загрузка...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+let autoRefreshInterval = null;
+
+async function loadRequests() {
+    try {
+        const method = document.getElementById('method-select').value;
+        const status = document.getElementById('status-select').value;
+        const limit = document.getElementById('limit-select').value;
+        
+        let url = `/api/admin/requests?limit=${limit}`;
+        if (method) url += `&method=${method}`;
+        if (status) url += `&status=${status}`;
+        
+        const response = await fetch(url);
+        const requests = await response.json();
+        
+        displayRequests(requests);
+    } catch (error) {
+        console.error('Error loading requests:', error);
+    }
+}
+
+function displayRequests(requests) {
+    const tbody = document.getElementById('requests-tbody');
+    document.getElementById('total-count').textContent = requests.length;
+    
+    if (requests.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Нет запросов</td></tr>';
+        return;
+    }
+    
+    let html = '';
+    requests.forEach(req => {
+        const timestamp = new Date(req.timestamp).toLocaleString('ru-RU');
+        
+        let statusClass = 'text-success';
+        if (req.status >= 400 && req.status < 500) statusClass = 'text-warning';
+        if (req.status >= 500) statusClass = 'text-danger';
+        
+        let methodClass = 'secondary';
+        if (req.method === 'GET') methodClass = 'primary';
+        if (req.method === 'POST') methodClass = 'success';
+        if (req.method === 'DELETE') methodClass = 'danger';
+        
+        let responseClass = '';
+        if (req.response_time > 1000) responseClass = 'text-danger';
+        else if (req.response_time > 500) responseClass = 'text-warning';
+        
+        html += `<tr>
+            <td><small>${timestamp}</small></td>
+            <td><span class="badge bg-${methodClass}">${req.method}</span></td>
+            <td><small>${req.endpoint}</small></td>
+            <td class="${statusClass}">${req.status}</td>
+            <td class="${responseClass}"><small>${req.response_time.toFixed(2)}ms</small></td>
+            <td><small>${req.ip_address || 'N/A'}</small></td>
+        </tr>`;
+    });
+    
+    tbody.innerHTML = html;
+}
+
+function toggleAutoRefresh() {
+    const btn = document.getElementById('auto-refresh-text');
+    
+    if (autoRefreshInterval) {
+        clearInterval(autoRefreshInterval);
+        autoRefreshInterval = null;
+        btn.textContent = 'Auto: OFF';
+    } else {
+        autoRefreshInterval = setInterval(loadRequests, 5000);
+        btn.textContent = 'Auto: ON';
+    }
+}
+
+// Load requests on page load
+document.addEventListener('DOMContentLoaded', loadRequests);
+</script>
+{% endblock %}
+
+

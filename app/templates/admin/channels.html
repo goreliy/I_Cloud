@@ -1,0 +1,210 @@
+{% extends "base.html" %}
+
+{% block title %}Каналы - Админ панель - {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1><i class="bi bi-diagram-3"></i> Управление каналами</h1>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="/">Главная</a></li>
+                <li class="breadcrumb-item"><a href="/admin">Админ</a></li>
+                <li class="breadcrumb-item active">Каналы</li>
+            </ol>
+        </nav>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-12">
+        <ul class="nav nav-tabs">
+            <li class="nav-item">
+                <a class="nav-link" href="/admin">
+                    <i class="bi bi-speedometer2"></i> Dashboard
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="/admin/users">
+                    <i class="bi bi-people"></i> Пользователи
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link active" href="/admin/channels">
+                    <i class="bi bi-diagram-3"></i> Каналы
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="/admin/requests">
+                    <i class="bi bi-activity"></i> API Запросы
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="/admin/stress-test">
+                    <i class="bi bi-lightning-charge"></i> Стресс-тест
+                </a>
+            </li>
+        </ul>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-3">
+                <label class="form-label">Сортировка</label>
+                <select class="form-select" id="sort-select" onchange="loadChannels()">
+                    <option value="created_at">По дате создания</option>
+                    <option value="last_entry_id">По количеству записей</option>
+                    <option value="name">По названию</option>
+                    <option value="updated_at">По последней активности</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Порядок</label>
+                <select class="form-select" id="order-select" onchange="loadChannels()">
+                    <option value="desc">Убывание</option>
+                    <option value="asc">Возрастание</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Фильтр</label>
+                <select class="form-select" id="filter-select" onchange="loadChannels()">
+                    <option value="all">Все каналы</option>
+                    <option value="public">Только публичные</option>
+                    <option value="private">Только приватные</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Поиск</label>
+                <input type="text" class="form-control" id="search-input" placeholder="Название или владелец..." onkeyup="filterTable()">
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Channels Table -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Все каналы</h5>
+        <span class="badge bg-primary" id="total-count">Загрузка...</span>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover" id="channels-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Название</th>
+                        <th>Владелец</th>
+                        <th>Записей</th>
+                        <th>Средний интервал</th>
+                        <th>Мин. интервал</th>
+                        <th>Создан</th>
+                        <th>Статус</th>
+                        <th>Действия</th>
+                    </tr>
+                </thead>
+                <tbody id="channels-tbody">
+                    <tr>
+                        <td colspan="9" class="text-center">Загрузка...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+let allChannels = [];
+
+async function loadChannels() {
+    try {
+        const sort = document.getElementById('sort-select').value;
+        const order = document.getElementById('order-select').value;
+        const filter = document.getElementById('filter-select').value;
+        
+        let url = `/api/admin/channels?sort=${sort}&order=${order}&limit=1000&include_stats=true`;
+        if (filter === 'public') url += '&filter_public=true';
+        if (filter === 'private') url += '&filter_public=false';
+        
+        const response = await fetch(url);
+        allChannels = await response.json();
+        
+        displayChannels(allChannels);
+    } catch (error) {
+        console.error('Error loading channels:', error);
+        document.getElementById('channels-tbody').innerHTML = 
+            '<tr><td colspan="8" class="text-center text-danger">Ошибка загрузки данных</td></tr>';
+    }
+}
+
+function formatInterval(seconds) {
+    if (!seconds) return '-';
+    if (seconds < 60) return seconds.toFixed(1) + 'с';
+    if (seconds < 3600) return (seconds / 60).toFixed(1) + 'м';
+    return (seconds / 3600).toFixed(1) + 'ч';
+}
+
+function displayChannels(channels) {
+    const tbody = document.getElementById('channels-tbody');
+    document.getElementById('total-count').textContent = channels.length;
+    
+    if (channels.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">Нет каналов</td></tr>';
+        return;
+    }
+    
+    let html = '';
+    channels.forEach(channel => {
+        const created = new Date(channel.created_at).toLocaleDateString('ru-RU');
+        const statusBadge = channel.public ? 
+            '<span class="badge bg-success">Публичный</span>' : 
+            '<span class="badge bg-secondary">Приватный</span>';
+        
+        const avgInterval = channel.avg_interval_seconds !== undefined ? 
+            formatInterval(channel.avg_interval_seconds) : '-';
+        const minInterval = channel.min_interval_seconds !== undefined ? 
+            formatInterval(channel.min_interval_seconds) : '-';
+        
+        html += `<tr>
+            <td>${channel.id}</td>
+            <td><strong>${channel.name}</strong></td>
+            <td><small>${channel.owner_email}</small></td>
+            <td><span class="badge bg-info">${channel.entry_count}</span></td>
+            <td><small>${avgInterval}</small></td>
+            <td><small>${minInterval}</small></td>
+            <td><small>${created}</small></td>
+            <td>${statusBadge}</td>
+            <td>
+                <a href="/channels/${channel.id}" class="btn btn-sm btn-outline-primary" target="_blank" title="Просмотр">
+                    <i class="bi bi-eye"></i>
+                </a>
+                <a href="/admin/channels/${channel.id}/stats" class="btn btn-sm btn-outline-info" title="Статистика">
+                    <i class="bi bi-graph-up"></i>
+                </a>
+            </td>
+        </tr>`;
+    });
+    
+    tbody.innerHTML = html;
+}
+
+function filterTable() {
+    const search = document.getElementById('search-input').value.toLowerCase();
+    const filtered = allChannels.filter(channel => 
+        channel.name.toLowerCase().includes(search) || 
+        channel.owner_email.toLowerCase().includes(search)
+    );
+    displayChannels(filtered);
+}
+
+// Load channels on page load
+document.addEventListener('DOMContentLoaded', loadChannels);
+</script>
+{% endblock %}
+
+
