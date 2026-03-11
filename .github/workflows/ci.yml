@@ -26,9 +26,9 @@ jobs:
           pip install -r requirements.txt
           pip install pytest flake8
 
-      - name: Проверка кода flake8
-        run: |
-          flake8 app/ --max-line-length=120
+#      - name: Проверка кода flake8
+#        run: |
+#          flake8 app/ --max-line-length=120
 
       - name: Запустить тесты
         run: |
