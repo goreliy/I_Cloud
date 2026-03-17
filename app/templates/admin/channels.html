@@ -54,23 +54,23 @@
         <div class="row g-3">
             <div class="col-md-3">
                 <label class="form-label">Сортировка</label>
-                <select class="form-select" id="sort-select" onchange="loadChannels()">
+                <select class="form-select" id="sort-select" onchange="applySort()">
                     <option value="created_at">По дате создания</option>
-                    <option value="last_entry_id">По количеству записей</option>
+                    <option value="entry_count">По количеству записей</option>
                     <option value="name">По названию</option>
                     <option value="updated_at">По последней активности</option>
                 </select>
             </div>
             <div class="col-md-2">
                 <label class="form-label">Порядок</label>
-                <select class="form-select" id="order-select" onchange="loadChannels()">
+                <select class="form-select" id="order-select" onchange="applySort()">
                     <option value="desc">Убывание</option>
                     <option value="asc">Возрастание</option>
                 </select>
             </div>
             <div class="col-md-3">
                 <label class="form-label">Фильтр</label>
-                <select class="form-select" id="filter-select" onchange="loadChannels()">
+                <select class="form-select" id="filter-select" onchange="applySort()">
                     <option value="all">Все каналы</option>
                     <option value="public">Только публичные</option>
                     <option value="private">Только приватные</option>
@@ -78,7 +78,7 @@
             </div>
             <div class="col-md-4">
                 <label class="form-label">Поиск</label>
-                <input type="text" class="form-control" id="search-input" placeholder="Название или владелец..." onkeyup="filterTable()">
+                <input type="text" class="form-control" id="search-input" placeholder="Название или владелец..." onkeyup="applySort()">
             </div>
         </div>
     </div>
@@ -88,7 +88,7 @@
 <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center">
         <h5 class="mb-0">Все каналы</h5>
-        <span class="badge bg-primary" id="total-count">Загрузка...</span>
+        <span class="badge bg-primary" id="total-count">0</span>
     </div>
     <div class="card-body">
         <div class="table-responsive">
@@ -99,17 +99,13 @@
                         <th>Название</th>
                         <th>Владелец</th>
                         <th>Записей</th>
-                        <th>Средний интервал</th>
-                        <th>Мин. интервал</th>
                         <th>Создан</th>
+                        <th>Обновлён</th>
                         <th>Статус</th>
                         <th>Действия</th>
                     </tr>
                 </thead>
                 <tbody id="channels-tbody">
-                    <tr>
-                        <td colspan="9" class="text-center">Загрузка...</td>
-                    </tr>
                 </tbody>
             </table>
         </div>
@@ -119,92 +115,76 @@
 
 {% block extra_scripts %}
 <script>
-let allChannels = [];
+const allChannels = {{ channels_json | safe }};
 
-async function loadChannels() {
-    try {
-        const sort = document.getElementById('sort-select').value;
-        const order = document.getElementById('order-select').value;
-        const filter = document.getElementById('filter-select').value;
-        
-        let url = `/api/admin/channels?sort=${sort}&order=${order}&limit=1000&include_stats=true`;
-        if (filter === 'public') url += '&filter_public=true';
-        if (filter === 'private') url += '&filter_public=false';
-        
-        const response = await fetch(url);
-        allChannels = await response.json();
-        
-        displayChannels(allChannels);
-    } catch (error) {
-        console.error('Error loading channels:', error);
-        document.getElementById('channels-tbody').innerHTML = 
-            '<tr><td colspan="8" class="text-center text-danger">Ошибка загрузки данных</td></tr>';
-    }
-}
-
-function formatInterval(seconds) {
-    if (!seconds) return '-';
-    if (seconds < 60) return seconds.toFixed(1) + 'с';
-    if (seconds < 3600) return (seconds / 60).toFixed(1) + 'м';
-    return (seconds / 3600).toFixed(1) + 'ч';
-}
-
-function displayChannels(channels) {
-    const tbody = document.getElementById('channels-tbody');
-    document.getElementById('total-count').textContent = channels.length;
-    
-    if (channels.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">Нет каналов</td></tr>';
-        return;
-    }
-    
-    let html = '';
-    channels.forEach(channel => {
-        const created = new Date(channel.created_at).toLocaleDateString('ru-RU');
-        const statusBadge = channel.public ? 
-            '<span class="badge bg-success">Публичный</span>' : 
-            '<span class="badge bg-secondary">Приватный</span>';
-        
-        const avgInterval = channel.avg_interval_seconds !== undefined ? 
-            formatInterval(channel.avg_interval_seconds) : '-';
-        const minInterval = channel.min_interval_seconds !== undefined ? 
-            formatInterval(channel.min_interval_seconds) : '-';
-        
-        html += `<tr>
-            <td>${channel.id}</td>
-            <td><strong>${channel.name}</strong></td>
-            <td><small>${channel.owner_email}</small></td>
-            <td><span class="badge bg-info">${channel.entry_count}</span></td>
-            <td><small>${avgInterval}</small></td>
-            <td><small>${minInterval}</small></td>
-            <td><small>${created}</small></td>
-            <td>${statusBadge}</td>
-            <td>
-                <a href="/channels/${channel.id}" class="btn btn-sm btn-outline-primary" target="_blank" title="Просмотр">
-                    <i class="bi bi-eye"></i>
-                </a>
-                <a href="/admin/channels/${channel.id}/stats" class="btn btn-sm btn-outline-info" title="Статистика">
-                    <i class="bi bi-graph-up"></i>
-                </a>
-            </td>
-        </tr>`;
-    });
-    
-    tbody.innerHTML = html;
-}
-
-function filterTable() {
+function applySort() {
+    const sort = document.getElementById('sort-select').value;
+    const order = document.getElementById('order-select').value;
+    const filter = document.getElementById('filter-select').value;
     const search = document.getElementById('search-input').value.toLowerCase();
-    const filtered = allChannels.filter(channel => 
-        channel.name.toLowerCase().includes(search) || 
-        channel.owner_email.toLowerCase().includes(search)
-    );
+
+    let filtered = allChannels.slice();
+
+    if (filter === 'public') filtered = filtered.filter(c => c.public);
+    else if (filter === 'private') filtered = filtered.filter(c => !c.public);
+
+    if (search) {
+        filtered = filtered.filter(c =>
+            (c.name && c.name.toLowerCase().includes(search)) ||
+            (c.owner_email && c.owner_email.toLowerCase().includes(search))
+        );
+    }
+
+    filtered.sort(function(a, b) {
+        var va = a[sort] || '';
+        var vb = b[sort] || '';
+        if (typeof va === 'string') va = va.toLowerCase();
+        if (typeof vb === 'string') vb = vb.toLowerCase();
+        if (va < vb) return order === 'asc' ? -1 : 1;
+        if (va > vb) return order === 'asc' ? 1 : -1;
+        return 0;
+    });
+
     displayChannels(filtered);
 }
 
-// Load channels on page load
-document.addEventListener('DOMContentLoaded', loadChannels);
+function displayChannels(channels) {
+    var tbody = document.getElementById('channels-tbody');
+    document.getElementById('total-count').textContent = channels.length;
+
+    if (channels.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">Нет каналов</td></tr>';
+        return;
+    }
+
+    var html = '';
+    channels.forEach(function(ch) {
+        var created = ch.created_at ? new Date(ch.created_at).toLocaleDateString('ru-RU') : '—';
+        var updated = ch.updated_at ? new Date(ch.updated_at).toLocaleString('ru-RU') : '—';
+        var statusBadge = ch.public
+            ? '<span class="badge bg-success">Публичный</span>'
+            : '<span class="badge bg-secondary">Приватный</span>';
+
+        html += '<tr>' +
+            '<td>' + ch.id + '</td>' +
+            '<td><strong>' + ch.name + '</strong></td>' +
+            '<td><small>' + ch.owner_email + '</small></td>' +
+            '<td><span class="badge bg-info">' + ch.entry_count + '</span></td>' +
+            '<td><small>' + created + '</small></td>' +
+            '<td><small>' + updated + '</small></td>' +
+            '<td>' + statusBadge + '</td>' +
+            '<td>' +
+                '<a href="/channels/' + ch.id + '" class="btn btn-sm btn-outline-primary" target="_blank" title="Просмотр"><i class="bi bi-eye"></i></a> ' +
+                '<a href="/admin/channels/' + ch.id + '/stats" class="btn btn-sm btn-outline-info" title="Статистика"><i class="bi bi-graph-up"></i></a>' +
+            '</td>' +
+            '</tr>';
+    });
+
+    tbody.innerHTML = html;
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    applySort();
+});
 </script>
 {% endblock %}
-
-

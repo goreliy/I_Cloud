@@ -1,8 +1,7 @@
 """Admin panel routes"""
 from typing import Optional
 from datetime import datetime, timedelta
-from fastapi import APIRouter, Depends, HTTPException, Request, Query
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
@@ -34,30 +33,30 @@ def get_stats(
     total_users = db.query(User).count()
     total_channels = db.query(Channel).count()
     total_feeds = db.query(Feed).count()
-    
+
     # Active users (with at least one channel)
     active_users = db.query(func.count(func.distinct(Channel.user_id))).scalar()
-    
+
     # Public channels
-    public_channels = db.query(Channel).filter(Channel.public == True).count()
-    
+    public_channels = db.query(Channel).filter(Channel.public.is_(True)).count()
+
     # Recent feeds (last 24 hours)
     yesterday = datetime.utcnow() - timedelta(days=1)
     recent_feeds = db.query(Feed).filter(Feed.created_at >= yesterday).count()
-    
+
     # Request stats (last 24 hours)
     recent_requests = db.query(RequestLog).filter(RequestLog.timestamp >= yesterday).count()
-    
+
     # Average response time
     avg_response_time = db.query(func.avg(RequestLog.response_time)).filter(
         RequestLog.timestamp >= yesterday
     ).scalar() or 0
-    
+
     # System stats
     cpu_percent = psutil.cpu_percent(interval=0.1)
     memory = psutil.virtual_memory()
     disk = psutil.disk_usage('/')
-    
+
     return {
         "total_users": total_users,
         "active_users": active_users or 0,
@@ -83,33 +82,67 @@ def list_all_users(
     admin: User = Depends(get_current_admin)
 ):
     """List all users with sorting"""
-    query = db.query(User)
-    
-    # Apply sorting
-    if order == "desc":
-        query = query.order_by(desc(getattr(User, sort, User.created_at)))
-    else:
-        query = query.order_by(getattr(User, sort, User.created_at))
-    
-    users = query.offset(skip).limit(limit).all()
-    
-    # Add channel count and profile for each user
-    users_with_stats = []
-    for user in users:
-        profile = db.query(UserProfile).filter(UserProfile.user_id == user.id).first()
-        user_dict = {
-            "id": user.id,
-            "email": user.email,
-            "is_active": user.is_active,
-            "is_admin": user.is_admin,
-            "created_at": user.created_at,
-            "last_login": user.last_login,
-            "display_name": profile.display_name if profile else None,
-            "channel_count": db.query(Channel).filter(Channel.user_id == user.id).count()
-        }
-        users_with_stats.append(user_dict)
-    
-    return users_with_stats
+    from fastapi.responses import JSONResponse
+    import traceback
+
+    try:
+        # Валидация поля сортировки
+        allowed_sort = {"created_at", "email", "id"}
+        if sort not in allowed_sort:
+            sort = "created_at"
+
+        sort_column = getattr(User, sort)
+        if order == "desc":
+            query = db.query(User).order_by(desc(sort_column))
+        else:
+            query = db.query(User).order_by(sort_column)
+
+        users = query.offset(skip).limit(limit).all()
+
+        # Собираем channel_count одним запросом
+        user_ids = [u.id for u in users]
+
+        channel_counts = {}
+        if user_ids:
+            channel_counts = dict(
+                db.query(Channel.user_id, func.count(Channel.id))
+                .filter(Channel.user_id.in_(user_ids))
+                .group_by(Channel.user_id)
+                .all()
+            )
+
+        # Собираем профили одним запросом
+        profiles = {}
+        if user_ids:
+            profiles = {
+                p.user_id: p for p in
+                db.query(UserProfile)
+                .filter(UserProfile.user_id.in_(user_ids))
+                .all()
+            }
+
+        result = []
+        for user in users:
+            profile = profiles.get(user.id)
+            result.append({
+                "id": user.id,
+                "email": user.email,
+                "is_active": user.is_active,
+                "is_admin": user.is_admin,
+                "created_at": user.created_at.isoformat() if user.created_at else None,
+                "last_login": user.last_login.isoformat() if user.last_login else None,
+                "display_name": profile.display_name if profile else None,
+                "channel_count": channel_counts.get(user.id, 0),
+            })
+
+        return JSONResponse(content=result)
+
+    except Exception as e:
+        traceback.print_exc()
+        return JSONResponse(
+            status_code=500,
+            content={"detail": f"Ошибка сервера: {str(e)}"}
+        )
 
 
 @router.get("/users/{user_id}", response_model=UserDetailResponse)
@@ -122,7 +155,7 @@ def get_user(
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
     # Get or create profile
     profile = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
     if not profile:
@@ -130,9 +163,9 @@ def get_user(
         db.add(profile)
         db.commit()
         db.refresh(profile)
-    
+
     channel_count = db.query(Channel).filter(Channel.user_id == user_id).count()
-    
+
     return UserDetailResponse(
         id=user.id,
         email=user.email,
@@ -156,11 +189,11 @@ def update_user(
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
     # Prevent self-demotion from admin
     if user_id == admin.id and payload.is_admin is False:
         raise HTTPException(status_code=400, detail="Cannot remove admin status from yourself")
-    
+
     # Update user fields
     if payload.email is not None:
         # Check if email is already taken by another user
@@ -168,28 +201,28 @@ def update_user(
         if existing:
             raise HTTPException(status_code=400, detail="Email already in use")
         user.email = payload.email
-    
+
     if payload.is_active is not None:
         user.is_active = payload.is_active
-    
+
     if payload.is_admin is not None:
         user.is_admin = payload.is_admin
-    
+
     # Update profile
     profile = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
     if not profile:
         profile = UserProfile(user_id=user_id)
         db.add(profile)
-    
+
     if payload.display_name is not None:
         profile.display_name = payload.display_name
-    
+
     db.commit()
     db.refresh(user)
     db.refresh(profile)
-    
+
     channel_count = db.query(Channel).filter(Channel.user_id == user_id).count()
-    
+
     return UserDetailResponse(
         id=user.id,
         email=user.email,
@@ -212,11 +245,11 @@ def delete_user(
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
     # Prevent self-deletion
     if user_id == admin.id:
         raise HTTPException(status_code=400, detail="Cannot delete yourself")
-    
+
     # Check if user has channels
     channel_count = db.query(Channel).filter(Channel.user_id == user_id).count()
     if channel_count > 0:
@@ -224,10 +257,10 @@ def delete_user(
             status_code=400,
             detail=f"Cannot delete user with {channel_count} channel(s). Delete channels first."
         )
-    
+
     db.delete(user)
     db.commit()
-    
+
     return {"status": "ok", "message": "User deleted"}
 
 
@@ -249,19 +282,19 @@ def force_password_change(
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
     if method == "direct":
         if not new_password:
             raise HTTPException(status_code=400, detail="new_password is required for direct method")
-        
+
         if len(new_password) < 6:
             raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
-        
+
         user.hashed_password = auth_service.get_password_hash(new_password)
         db.commit()
-        
+
         return {"status": "ok", "message": "Password changed successfully"}
-    
+
     elif method == "email":
         # Generate reset token
         from datetime import timedelta
@@ -270,17 +303,17 @@ def force_password_change(
             data={"sub": str(user.id), "type": "password_reset"},
             expires_delta=token_expires
         )
-        
+
         # TODO: Send email with reset link
         # For now, return the token (in production, send via email)
         reset_url = f"/reset-password?token={reset_token}"
-        
+
         return {
             "status": "ok",
             "message": "Password reset link generated",
             "reset_url": reset_url,  # Remove in production, send via email
         }
-    
+
     else:
         raise HTTPException(status_code=400, detail="Invalid method. Use 'direct' or 'email'")
 
@@ -308,21 +341,21 @@ def list_all_channels(
 ):
     """List all channels with sorting and filtering"""
     from app.services import channel_stats
-    
+
     query = db.query(Channel)
-    
+
     # Apply filter
     if filter_public is not None:
         query = query.filter(Channel.public == filter_public)
-    
+
     # Apply sorting
     if order == "desc":
         query = query.order_by(desc(getattr(Channel, sort, Channel.created_at)))
     else:
         query = query.order_by(getattr(Channel, sort, Channel.created_at))
-    
+
     channels = query.offset(skip).limit(limit).all()
-    
+
     # Add stats for each channel
     channels_with_stats = []
     for channel in channels:
@@ -336,7 +369,7 @@ def list_all_channels(
             "created_at": channel.created_at,
             "updated_at": channel.updated_at
         }
-        
+
         if include_stats:
             stats = channel_stats.calculate_channel_stats(channel.id, db)
             channel_dict.update({
@@ -344,9 +377,9 @@ def list_all_channels(
                 "min_interval_seconds": stats.min_interval_seconds,
                 "recent_count": stats.recent_count,
             })
-        
+
         channels_with_stats.append(channel_dict)
-    
+
     return channels_with_stats
 
 
@@ -358,11 +391,11 @@ def get_channel_stats(
 ):
     """Get detailed statistics for a channel"""
     from app.services import channel_stats
-    
+
     channel = db.query(Channel).filter(Channel.id == channel_id).first()
     if not channel:
         raise HTTPException(status_code=404, detail="Channel not found")
-    
+
     stats = channel_stats.calculate_channel_stats(channel_id, db)
     return stats.to_dict()
 
@@ -378,18 +411,18 @@ def list_requests(
 ):
     """List recent API requests"""
     query = db.query(RequestLog)
-    
+
     # Apply filters
     if status:
         query = query.filter(RequestLog.response_status == status)
     if method:
         query = query.filter(RequestLog.method == method)
-    
+
     # Order by timestamp desc
     query = query.order_by(desc(RequestLog.timestamp))
-    
+
     requests = query.offset(skip).limit(limit).all()
-    
+
     return [
         {
             "id": req.id,
@@ -410,7 +443,7 @@ def system_health(admin: User = Depends(get_current_admin)):
     cpu_percent = psutil.cpu_percent(interval=0.1)
     memory = psutil.virtual_memory()
     disk = psutil.disk_usage('/')
-    
+
     return {
         "cpu": {
             "percent": cpu_percent,
@@ -475,4 +508,3 @@ async def membuffer_flush(admin: User = Depends(get_current_admin)):
         return {"enabled": False}
     await mem_buffer._flush_batch(flush_all=True)
     return {"ok": True, **mem_buffer.stats()}
-

@@ -1,6 +1,6 @@
 """Web interface routes"""
 from typing import Optional
-from fastapi import APIRouter, Depends, Request, Form, HTTPException, status, Response, File, UploadFile
+from fastapi import APIRouter, Depends, Request, Form, HTTPException, status, File, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
@@ -38,18 +38,18 @@ def make_redirect(url: str, status_code: int = status.HTTP_303_SEE_OTHER) -> Red
     root_path = settings.ROOT_PATH or ""
     if not root_path:
         return RedirectResponse(url=url, status_code=status_code)
-    
+
     # Если URL уже содержит ROOT_PATH, убираем его перед добавлением
     if url.startswith(root_path):
         url = url[len(root_path):]
-    
+
     # Добавляем ROOT_PATH к относительным путям
     if url.startswith("/"):
         url = f"{root_path}{url}"
     elif not url.startswith(("http://", "https://", "//")):
         # Если это не абсолютный URL и не начинается с /, добавляем ROOT_PATH
         url = f"{root_path}/{url}"
-    
+
     return RedirectResponse(url=url, status_code=status_code)
 
 
@@ -100,7 +100,7 @@ def create_channel_page(
     redirect = require_auth(current_user, request)
     if redirect:
         return redirect
-    
+
     context = get_template_context(request, current_user)
     context["channel"] = None
     return templates.TemplateResponse("channel_form.html", context)
@@ -121,17 +121,17 @@ async def create_channel_submit(
     redirect = require_auth(current_user, request)
     if redirect:
         return redirect
-    
+
     # Convert checkbox value to boolean
     is_public = public == "on" if public else False
-    
+
     channel_create = ChannelCreate(
         name=name,
         description=description or "",
         timezone=timezone,
         public=is_public
     )
-    
+
     channel = channel_service.create_channel(db, channel_create, current_user)
     return make_redirect(f"/channels/{channel.id}")
 
@@ -147,10 +147,10 @@ def channel_detail_page(
     channel = channel_service.get_channel(db, channel_id)
     if not channel:
         raise HTTPException(status_code=404, detail="Channel not found")
-    
+
     if not channel_service.check_channel_access(channel, current_user):
         raise HTTPException(status_code=403, detail="Access denied")
-    
+
     # Get API keys if user is owner
     api_keys = []
     write_key = None
@@ -164,15 +164,15 @@ def channel_detail_page(
                     write_key = key
                 elif key.type == "read" and not read_key:
                     read_key = key
-    
+
     # Get widgets
     from app.models.custom_widget import CustomWidget
     import json
     widgets = db.query(CustomWidget).filter(
         CustomWidget.channel_id == channel_id,
-        CustomWidget.is_active == True
+        CustomWidget.is_active.is_(True)
     ).order_by(CustomWidget.position).all()
-    
+
     widgets_json = json.dumps([
         {
             "id": w.id,
@@ -184,7 +184,7 @@ def channel_detail_page(
         }
         for w in widgets
     ])
-    
+
     # Build base URL with ROOT_PATH
     root_path = settings.ROOT_PATH or ""
     base_url = f"{request.url.scheme}://{request.url.hostname}"
@@ -192,7 +192,7 @@ def channel_detail_page(
     if request.url.port and request.url.port not in (80, 443):
         base_url += f":{request.url.port}"
     base_url += root_path
-    
+
     context = get_template_context(request, current_user)
     context["channel"] = channel
     context["api_keys"] = api_keys
@@ -216,14 +216,14 @@ def edit_channel_page(
     redirect = require_auth(current_user, request)
     if redirect:
         return redirect
-    
+
     channel = channel_service.get_channel(db, channel_id)
     if not channel:
         raise HTTPException(status_code=404, detail="Channel not found")
-    
+
     if not channel_service.check_channel_access(channel, current_user, require_owner=True):
         raise HTTPException(status_code=403, detail="Only channel owner can edit")
-    
+
     context = get_template_context(request, current_user)
     context["channel"] = channel
     return templates.TemplateResponse("channel_form.html", context)
@@ -245,24 +245,24 @@ async def edit_channel_submit(
     redirect = require_auth(current_user, request)
     if redirect:
         return redirect
-    
+
     channel = channel_service.get_channel(db, channel_id)
     if not channel:
         raise HTTPException(status_code=404, detail="Channel not found")
-    
+
     if not channel_service.check_channel_access(channel, current_user, require_owner=True):
         raise HTTPException(status_code=403, detail="Only channel owner can edit")
-    
+
     # Convert checkbox value to boolean
     is_public = public == "on" if public else False
-    
+
     channel_update = ChannelUpdate(
         name=name,
         description=description,
         timezone=timezone,
         public=is_public
     )
-    
+
     channel_service.update_channel(db, channel, channel_update)
     return make_redirect(f"/channels/{channel_id}")
 
@@ -279,14 +279,14 @@ async def delete_channel_submit(
     redirect = require_auth(current_user, request)
     if redirect:
         return redirect
-    
+
     channel = channel_service.get_channel(db, channel_id)
     if not channel:
         raise HTTPException(status_code=404, detail="Channel not found")
-    
+
     if not channel_service.check_channel_access(channel, current_user, require_owner=True):
         raise HTTPException(status_code=403, detail="Only channel owner can delete")
-    
+
     channel_service.delete_channel(db, channel)
     return make_redirect("/channels")
 
@@ -299,7 +299,7 @@ def login_page(
     """Login page"""
     if not settings.AUTH_ENABLED:
         return make_redirect("/")
-    
+
     context = get_template_context(request)
     context["next"] = next
     return templates.TemplateResponse("login.html", context)
@@ -329,7 +329,7 @@ async def reset_password_submit(
     """Handle password reset submission"""
     if not settings.AUTH_ENABLED:
         return make_redirect("/")
-    
+
     # Validate passwords
     if new_password != confirm_password:
         context = get_template_context(request)
@@ -341,23 +341,24 @@ async def reset_password_submit(
         context["token"] = token
         context["error"] = "Пароль должен содержать минимум 6 символов"
         return templates.TemplateResponse("reset_password.html", context, status_code=400)
-    
+
     user_id = auth_service.verify_password_reset_token(token)
     if not user_id:
         context = get_template_context(request)
         context["error"] = "Недействительная или истекшая ссылка"
         return templates.TemplateResponse("reset_password.html", context, status_code=400)
-    
+
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         context = get_template_context(request)
         context["error"] = "Пользователь не найден"
         return templates.TemplateResponse("reset_password.html", context, status_code=404)
-    
+
     user.hashed_password = auth_service.get_password_hash(new_password)
     db.commit()
-    
+
     return make_redirect("/login?reset=success")
+
 
 @router.post("/login")
 async def login_submit(
@@ -370,29 +371,29 @@ async def login_submit(
     """Login form submission"""
     if not settings.AUTH_ENABLED:
         return make_redirect("/")
-    
+
     user = auth_service.authenticate_user(db, email, password)
     if not user:
         context = get_template_context(request)
         context["error"] = "Неверный email или пароль"
         return templates.TemplateResponse("login.html", context, status_code=400)
-    
+
     # Update last login
     from datetime import datetime
     user.last_login = datetime.utcnow()
     db.commit()
-    
+
     # Create JWT token with expiration
     token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = auth_service.create_access_token(
-        data={"sub": str(user.id)}, 
+        data={"sub": str(user.id)},
         expires_delta=token_expires
     )
-    
+
     # Redirect to next page or default to channels
     redirect_url = next if next else "/channels"
     response = make_redirect(redirect_url)
-    
+
     # Set cookie with proper settings
     response.set_cookie(
         key="access_token",
@@ -401,7 +402,7 @@ async def login_submit(
         max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         samesite="lax"
     )
-    
+
     return response
 
 
@@ -410,7 +411,7 @@ def register_page(request: Request):
     """Register page"""
     if not settings.AUTH_ENABLED:
         return make_redirect("/")
-    
+
     context = get_template_context(request)
     return templates.TemplateResponse("register.html", context)
 
@@ -426,24 +427,24 @@ async def register_submit(
     """Register form submission"""
     if not settings.AUTH_ENABLED:
         return make_redirect("/")
-    
+
     context = get_template_context(request)
-    
+
     # Validate passwords match
     if password != password_confirm:
         context["error"] = "Пароли не совпадают"
         return templates.TemplateResponse("register.html", context)
-    
+
     # Check if user exists
     existing_user = db.query(User).filter(User.email == email).first()
     if existing_user:
         context["error"] = "Email уже зарегистрирован"
         return templates.TemplateResponse("register.html", context)
-    
+
     # Create user
     user_create = UserCreate(email=email, password=password)
     auth_service.create_user(db, user_create)
-    
+
     return make_redirect("/login")
 
 
@@ -466,7 +467,7 @@ def admin_dashboard_page(
     """Admin dashboard page"""
     if not current_user or not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
-    
+
     context = get_template_context(request, current_user)
     return templates.TemplateResponse("admin/dashboard.html", context)
 
@@ -474,13 +475,52 @@ def admin_dashboard_page(
 @router.get("/admin/users", response_class=HTMLResponse)
 def admin_users_page(
     request: Request,
+    db: Session = Depends(get_db),
     current_user: Optional[User] = Depends(get_current_user_optional)
 ):
     """Admin users management page"""
     if not current_user or not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
-    
+
+    import json as _json
+    from sqlalchemy import func, desc
+    from app.models.user import User as UserModel
+    from app.models.user_profile import UserProfile
+    from app.models.channel import Channel
+
+    users = db.query(UserModel).order_by(desc(UserModel.created_at)).all()
+    user_ids = [u.id for u in users]
+
+    channel_counts = {}
+    profiles_map = {}
+    if user_ids:
+        channel_counts = dict(
+            db.query(Channel.user_id, func.count(Channel.id))
+            .filter(Channel.user_id.in_(user_ids))
+            .group_by(Channel.user_id)
+            .all()
+        )
+        profiles_map = {
+            p.user_id: p for p in
+            db.query(UserProfile).filter(UserProfile.user_id.in_(user_ids)).all()
+        }
+
+    users_data = []
+    for user in users:
+        profile = profiles_map.get(user.id)
+        users_data.append({
+            "id": user.id,
+            "email": user.email,
+            "is_active": user.is_active,
+            "is_admin": user.is_admin,
+            "created_at": user.created_at.isoformat() if user.created_at else None,
+            "last_login": user.last_login.isoformat() if user.last_login else None,
+            "display_name": profile.display_name if profile else None,
+            "channel_count": channel_counts.get(user.id, 0),
+        })
+
     context = get_template_context(request, current_user)
+    context["users_json"] = _json.dumps(users_data, ensure_ascii=False)
     return templates.TemplateResponse("admin/users.html", context)
 
 
@@ -494,14 +534,14 @@ def admin_user_edit_page(
     """Admin user edit page"""
     if not current_user or not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
-    
+
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
     from app.models.user_profile import UserProfile
     profile = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
-    
+
     context = get_template_context(request, current_user)
     context["edit_user"] = user
     context["edit_profile"] = profile
@@ -511,13 +551,42 @@ def admin_user_edit_page(
 @router.get("/admin/channels", response_class=HTMLResponse)
 def admin_channels_page(
     request: Request,
+    db: Session = Depends(get_db),
     current_user: Optional[User] = Depends(get_current_user_optional)
 ):
     """Admin channels management page"""
     if not current_user or not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
-    
+
+    import json as _json
+    from sqlalchemy import desc
+    from app.models.channel import Channel
+    from app.models.user import User as UserModel
+
+    channels = db.query(Channel).order_by(desc(Channel.created_at)).all()
+
+    owner_ids = list({ch.user_id for ch in channels if ch.user_id})
+    owners_map = {}
+    if owner_ids:
+        owners_map = {
+            u.id: u.email for u in
+            db.query(UserModel.id, UserModel.email).filter(UserModel.id.in_(owner_ids)).all()
+        }
+
+    channels_data = []
+    for ch in channels:
+        channels_data.append({
+            "id": ch.id,
+            "name": ch.name,
+            "owner_email": owners_map.get(ch.user_id, "N/A") if ch.user_id else "N/A",
+            "public": ch.public,
+            "entry_count": ch.last_entry_id or 0,
+            "created_at": ch.created_at.isoformat() if ch.created_at else None,
+            "updated_at": ch.updated_at.isoformat() if ch.updated_at else None,
+        })
+
     context = get_template_context(request, current_user)
+    context["channels_json"] = _json.dumps(channels_data, ensure_ascii=False)
     return templates.TemplateResponse("admin/channels.html", context)
 
 
@@ -531,16 +600,16 @@ def admin_channel_stats_page(
     """Admin channel statistics page"""
     if not current_user or not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
-    
+
     from app.models.channel import Channel
     from app.services import channel_stats
-    
+
     channel = db.query(Channel).filter(Channel.id == channel_id).first()
     if not channel:
         raise HTTPException(status_code=404, detail="Channel not found")
-    
+
     stats = channel_stats.calculate_channel_stats(channel_id, db)
-    
+
     context = get_template_context(request, current_user)
     context["channel"] = channel
     context["stats"] = stats
@@ -555,7 +624,7 @@ def admin_requests_page(
     """Admin API requests monitoring page"""
     if not current_user or not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
-    
+
     context = get_template_context(request, current_user)
     return templates.TemplateResponse("admin/api_requests.html", context)
 
@@ -569,17 +638,17 @@ def admin_stress_test_page(
     """Admin stress test page"""
     if not current_user or not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
-    
+
     from app.models.channel import Channel
     channels = db.query(Channel).all()
-    
+
     context = get_template_context(request, current_user)
     context['channels'] = channels
     context['max_workers'] = settings.STRESS_TEST_MAX_WORKERS
     context['max_rps'] = settings.STRESS_TEST_MAX_RPS
     context['max_duration'] = settings.STRESS_TEST_MAX_DURATION
     context['server_workers'] = settings.WORKERS
-    
+
     return templates.TemplateResponse("admin/stress_test.html", context)
 
 
@@ -622,14 +691,14 @@ def channel_settings_page(
     redirect = require_auth(current_user, request)
     if redirect:
         return redirect
-    
+
     channel = channel_service.get_channel(db, channel_id)
     if not channel:
         raise HTTPException(status_code=404, detail="Channel not found")
-    
+
     if not channel_service.check_channel_access(channel, current_user, require_owner=True):
         raise HTTPException(status_code=403, detail="Only channel owner can access settings")
-    
+
     context = get_template_context(request, current_user)
     context["channel"] = channel
     return templates.TemplateResponse("channel_settings.html", context)
@@ -665,14 +734,14 @@ async def update_channel_settings(
     redirect = require_auth(current_user, request)
     if redirect:
         return redirect
-    
+
     channel = channel_service.get_channel(db, channel_id)
     if not channel:
         raise HTTPException(status_code=404, detail="Channel not found")
-    
+
     if not channel_service.check_channel_access(channel, current_user, require_owner=True):
         raise HTTPException(status_code=403, detail="Only channel owner can update settings")
-    
+
     # Update channel
     channel.color_scheme = color_scheme
     channel.custom_css = custom_css
@@ -684,7 +753,7 @@ async def update_channel_settings(
     channel.field6_label = field6_label
     channel.field7_label = field7_label
     channel.field8_label = field8_label
-    
+
     # Update visibility (checkbox returns "on" if checked, None if unchecked)
     channel.field1_visible = field1_visible == "on"
     channel.field2_visible = field2_visible == "on"
@@ -694,9 +763,9 @@ async def update_channel_settings(
     channel.field6_visible = field6_visible == "on"
     channel.field7_visible = field7_visible == "on"
     channel.field8_visible = field8_visible == "on"
-    
+
     db.commit()
-    
+
     return make_redirect(f"/channels/{channel_id}/settings?success=1")
 
 
@@ -714,20 +783,20 @@ def channel_widgets_page(
     redirect = require_auth(current_user, request)
     if redirect:
         return redirect
-    
+
     channel = channel_service.get_channel(db, channel_id)
     if not channel:
         raise HTTPException(status_code=404, detail="Channel not found")
-    
+
     if not channel_service.check_channel_access(channel, current_user, require_owner=True):
         raise HTTPException(status_code=403, detail="Only channel owner can manage widgets")
-    
+
     # Get widgets
     from app.models.custom_widget import CustomWidget
     widgets = db.query(CustomWidget).filter(
         CustomWidget.channel_id == channel_id
     ).order_by(CustomWidget.position).all()
-    
+
     context = get_template_context(request, current_user)
     context["channel"] = channel
     context["widgets"] = widgets
@@ -747,24 +816,24 @@ def edit_widget_page(
     redirect = require_auth(current_user, request)
     if redirect:
         return redirect
-    
+
     channel = channel_service.get_channel(db, channel_id)
     if not channel:
         raise HTTPException(status_code=404, detail="Channel not found")
-    
+
     if not channel_service.check_channel_access(channel, current_user, require_owner=True):
         raise HTTPException(status_code=403, detail="Only channel owner can edit widgets")
-    
+
     # Get widget
     from app.models.custom_widget import CustomWidget
     widget = db.query(CustomWidget).filter(
         CustomWidget.id == widget_id,
         CustomWidget.channel_id == channel_id
     ).first()
-    
+
     if not widget:
         raise HTTPException(status_code=404, detail="Widget not found")
-    
+
     context = get_template_context(request, current_user)
     context["channel"] = channel
     context["widget"] = widget
@@ -793,52 +862,52 @@ async def update_widget_submit(
     """Update widget submission"""
     from app.models.custom_widget import CustomWidget
     from app.services import upload_service
-    
+
     # Check authentication
     redirect = require_auth(current_user, request)
     if redirect:
         return redirect
-    
+
     channel = channel_service.get_channel(db, channel_id)
     if not channel:
         raise HTTPException(status_code=404, detail="Channel not found")
-    
+
     if not channel_service.check_channel_access(channel, current_user, require_owner=True):
         raise HTTPException(status_code=403, detail="Access denied")
-    
+
     # Get widget
     widget = db.query(CustomWidget).filter(
         CustomWidget.id == widget_id,
         CustomWidget.channel_id == channel_id
     ).first()
-    
+
     if not widget:
         raise HTTPException(status_code=404, detail="Widget not found")
-    
+
     # Update basic fields
     widget.name = name
     widget.width = width
     widget.height = height
-    
+
     # Update type-specific fields
     if widget.widget_type == 'svg':
         widget.svg_bindings = svg_bindings
-        
+
         # Replace SVG file if uploaded
         if file and file.filename:
             # Delete old SVG
             if widget.svg_file_url:
                 upload_service.delete_file(widget.svg_file_url)
-            
+
             # Save new SVG
             svg_url = await upload_service.save_svg_file(file, channel_id)
             widget.svg_file_url = svg_url
-    
+
     elif widget.widget_type == 'html':
         widget.html_code = html_code
         widget.css_code = css_code
         widget.js_code = js_code
-    
+
     db.commit()
     db.refresh(widget)
 
@@ -851,7 +920,7 @@ async def update_widget_submit(
             comment=version_comment or "Manual edit",
             created_by=current_user.id if current_user else None,
         )
-    
+
     return make_redirect(f"/channels/{channel_id}/widgets?updated=1")
 
 
@@ -869,22 +938,21 @@ def channel_automation_page(
     redirect = require_auth(current_user, request)
     if redirect:
         return redirect
-    
+
     channel = channel_service.get_channel(db, channel_id)
     if not channel:
         raise HTTPException(status_code=404, detail="Channel not found")
-    
+
     if not channel_service.check_channel_access(channel, current_user, require_owner=True):
         raise HTTPException(status_code=403, detail="Only channel owner can manage automation")
-    
+
     # Get rules
     from app.models.automation_rule import AutomationRule
     rules = db.query(AutomationRule).filter(
         AutomationRule.channel_id == channel_id
     ).order_by(AutomationRule.priority.asc()).all()
-    
+
     context = get_template_context(request, current_user)
     context["channel"] = channel
     context["rules"] = rules
     return templates.TemplateResponse("channel_automation.html", context)
-
